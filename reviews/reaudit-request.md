@@ -1,7 +1,7 @@
 # Re-audit request — SPEC.md revision 2
 
-**Spec SHA-256 (working tree, 2026-11-01):** `a9688cde86ffdc7136df1a8044769a8d3d157ece35d9c122f26fa411cbfc2961`
-Baseline: revision 1 plus the post-fix addenda in `reviews/*.md`. Replace the SHA with the commit hash once committed.
+**Spec revision:** commit `24e0e71` (`git show 24e0e71:SPEC.md`).
+Baseline: revision 1 plus the post-fix addenda in `reviews/*.md`.
 
 ## Changed sections (diff-only audit scope)
 
