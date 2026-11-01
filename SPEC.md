@@ -320,7 +320,7 @@ Three tiers, each with a different job. They are never pooled into one headline;
 | Inked edges: clipped content with hidden pixels | 10.0% | v1 census 10% |
 | Inked edges: tiling pattern | 2.5% | v1 census 2.5% |
 | Inked edges: stroke/text | 0.6% | v1 census 0.7% (rounded to sum) |
-| Image edges with hidden bleed | 50% of image edges (FULL); 50% STOP | assumption A1 (the joint is unmeasured); sensitivity at 75/25 in O1 |
+| Image edges with hidden bleed | 50% of image edges (FULL); 50% STOP | assumption `ASM-A1` (the joint is unmeasured; settled by the 1,000-page audit in O1); sensitivity at 75/25 in O1 |
 | Flat edges with hidden bleed | 80% FULL; 20% STOP | continued solids are the common flat case |
 | Clipped-art edges with hidden bleed | 100% FULL | hidden pixels are the definition of the class |
 | Pattern edges with hidden bleed | 90% FULL; 10% STOP | pattern may end at the trim |
@@ -341,7 +341,7 @@ With 640 eval pages this yields approximately: 320 quiet pages, 185 photo pages,
 
 **Licence check.** A page enters the set only if the licence is verified by two reviewers and the licence text is archived; “free to download” is not a licence. The set is redistributed as rendered 16-bit PNG crops with a NOTICE file, or as a downloader that verifies the PDF hash, depending on the licence's redistribution terms.
 
-**Validity** uses §3.4, fixed for pale tints. **Counts:** target 300 pages / 100 families; minimum 120 / 40. Families are job/template clusters (same publisher series, same design template, or same source document); when uncertain, merge families (conservative). Splits by family 50/25/25. Tier B cannot support a 1% severe-rate bound; it is a generalization and public-leaderboard instrument, not a production acceptance set.
+**Validity** uses §3.4 (including the V11 render region: BleedBox dilated by the apron, clipped to the MediaBox, missing pixels padded with paper and unscored), fixed for pale tints. **Counts:** target 300 pages / 100 families; minimum 120 / 40. Families are job/template clusters (same publisher series, same design template, or same source document); when uncertain, merge families (conservative). Splits by family 50/25/25. Tier B cannot support a 1% severe-rate bound; it is a generalization and public-leaderboard instrument, not a production acceptance set.
 
 ### 3.3 Tier C — private protocol
 
@@ -383,6 +383,8 @@ These rules decide whether an edge's GT is trustworthy and what class it is. The
 **V9 — Model-space GT.** GT is stored in page space and converted to the model space with the same pipeline as the input; the converted GT is what A/C metrics compare against. The page-space GT is used for E metrics.
 
 **V10 — Label isolation.** GT, paper estimates, class labels and depth are stored in a separate label store with a different access path from the input store; no run-time component may read it.
+
+**V11 — Render region.** For real pages (Tier B/C) the render region is the BleedBox dilated by the apron `a` on each side, clipped to the MediaBox. Pixels of the dilated region that fall outside the MediaBox are filled with the paper estimate (V2) and counted per edge as `padded_px`, stored in the label store (not in the per-tile CSV). Padded pixels carry no GT: they are treated like V8 (unscored, never counted in A/B/C/E metrics) and are excluded from paper estimation. An edge whose scored ring `b` is itself partly padded (BleedBox exceeds MediaBox) is invalid under V5 (GT not trustworthy), not silently scored. Synthetic Tier A renders the full canvas and has `padded_px = 0`.
 
 ### 3.5 Family definitions, splits and contamination
 
@@ -538,6 +540,8 @@ C8  RCG       = mean |R_page − R_composited| over the ring (whole-page vs tile
 **C1 vs C2 vs C3.** C1 is a directed step across the trim line; C2 is a colour-distance version in ΔE; C3 is v1's gradient error, retained because all historical numbers use it and because it sees the one-sided gradient direction. They are correlated but not redundant: C2 catches a chroma-only step, C3 catches a luminance ramp mismatch that averages to zero over the ring, C1 catches a step that happens to preserve ΔE because both sides shifted together. Report all three; C2 is the print-relevant one.
 
 **C7/C8 are consistency, not quality.** They do not measure whether the fill is right; they measure whether the method gives the same answer when the same page is presented twice with different tilings. A method that is inconsistent cannot be productionised even if its per-tile mean is good, because the assembled ring will quilt. The **reference composite** for C8 is: place each tile's prediction in page coordinates; in a 32 px overlap, blend with a raised-cosine feather whose weights sum to 1; outside overlaps, take the single covering tile. The same rule is used for both the whole-page and tile-composite arms so C8 measures model consistency, not a compositing choice. **C4/C5 are scored only where a known line/text line actually reaches the seam**; tiles with none are `n/a`, excluded from the C4/C5 denominator, and reported as `line_coverage` / `text_coverage`. This is what makes `gt_copy` near-perfect on a solid page: there is no line to continue, so C4 is not applicable, not failed.
+
+**C8 applicability.** C8 compares a single whole-page pass with the tile composite. A model that runs whole-page inference as four seam-anchored passes (one per edge) has no single-pass arm, so C8 is `n/a` for that submission: `ring_gap` is left empty, C8 is excluded from its axis C aggregate and the C8 failure threshold is not applied. Such a submission is scored on C7 only, and the declaration (`passes_per_page = 4`) is recorded in the submission package (§13.3).
 
 ---
 
@@ -1026,7 +1030,7 @@ Every submission's table is shown with the same baseline rows. The classical six
 | BL8 | `patchmatch` | PatchMatch inpainting, subset only (cost) | classical, slow |
 | BL9 | `lama` | big-LaMa, pinned checkpoint hash | strong classical/CNN reference |
 | BL10 | `flux_fill` | FLUX.1 Fill dev, pinned weights hash, fixed sampler, no prompt | primary DiT baseline |
-| BL11 | `sd3_mmdit` | SD3-class MMDiT inpainting pipeline: a named SD3.5 checkpoint + declared inpainting adapter/ControlNet derivation, pinned weights hash, no prompt (a constructed pipeline, not an official single artifact; the exact derivation is part of the submission) | second transformer family |
+| BL11 | `sd3_mmdit` | SD3-class MMDiT inpainting pipeline: a named SD3.5 checkpoint + declared inpainting adapter/ControlNet derivation, pinned weights hash, no prompt (a constructed pipeline, not an official single artifact; the exact derivation is part of the submission; at freeze the adapter/ControlNet name, source and weights hash are recorded in `expected_baselines.json`, and BL11 is omitted from the numbers to beat if unnamed) | second transformer family |
 | BL12 | `mae_vit` | MAE-style ViT-L inpainter trained on Tier A train only | masked-image-modelling baseline |
 | BL13 | `sd2_raw` / `sd2_refine` | SD2 inpainting, empty prompt / over edge-repeat prefill, strength 0.6 | v1 legacy comparison |
 
@@ -1098,6 +1102,8 @@ These are the v1 routing conditions restated as v2 gates. They are evaluated on 
 
 **v1-derived targets.** The numbers 3.35%, 59% and 3.78 in R2–R4 are v1 measurements, quoted because they are the decision thresholds the production team already uses. v2's severe rule and geometry differ (seven-method oracle, 48 px band), so at protocol freeze the reference harness recomputes edge repeat's v2 severe rate and BGE on the v2 manifest. R3 then reads “≤ edge repeat's v2 severe rate (pre-freeze placeholder 3.35%)”, and R4 reads “≤ edge repeat's v2 BGE (pre-freeze placeholder 3.78)”. A submission cannot claim R3/R4 against the v1 number without the `legacy_v1` mode.
 
+**R1/R2 provenance.** The R1 figures (LaMa 44.29, edge repeat 45.96, margin 1.67) and the R2 figure (LaMa 59% flat severe) are v1 aggregates and are `provisional-until-freeze`. At freeze they are replaced by, or reconciled against, the frozen private aggregate file, cited by file name and SHA-256 in `expected_baselines.json`; until then R1/R2 results are reported but not used for a pass/fail routing claim.
+
 **What “beats v1” means.** v1's `sd_refine` matched edge repeat at 2,600× cost. Under v2, a transformer must beat R1–R8 simultaneously; a model that only matches MAE but fails R2/R4/R5 is a regression in production terms even if its mean MAE is lower. The 2.5–2.9 MAE headroom is the bar, not the 0.1 MAE difference between two classical fills.
 
 ---
@@ -1121,7 +1127,7 @@ CI = 2.5th and 97.5th percentiles; B = 1000; seed = hash(protocol_version, stati
 - The bootstrap is stratified by split and page type so the production weights are preserved in every resample.
 - Clustering is reported at two levels: `ICC_page` (between pages in a family) and `ICC_tile` (between tiles in a page). Their design effects are `DE_page = 1 + (m_page−1)·ICC_page` and `DE_tile = 1 + (m_tile−1)·ICC_tile`, where `m` is the average number of units per cluster. `n_eff = n / DE` at the relevant level; `n_eff`, not the raw count, is quoted next to every interval and used in every gate bound. The pre-freeze planning values are `ICC_page = 0.05, m_page = 3.25 → DE_page = 1.11` and `ICC_tile = 0.05, m_tile = 28 → DE_tile = 2.35`; both are re-estimated from calibration data and reported.
 - Percentile CIs are used; BCa is reported as a sensitivity check when the bootstrap distribution is skewed (severe rates, tail metrics). With fewer than 30 clusters, percentile CIs are labelled `few-cluster` and a t-percentile/BCa interval is used instead.
-- For a zero-event rate the exact Clopper-Pearson bound is computed on `n_eff`, not on the raw count: `UB = 1 − 0.05^(1/n_eff)`. A percentile bootstrap of a zero-event rate is degenerate (every resample has zero events, so its upper bound is zero) and is never used as the gate bound. The design-effect-adjusted CP bound is the gate bound; the cluster bootstrap is reported beside it as a sensitivity check.
+- For a zero-event rate the exact Clopper-Pearson bound is computed on `n_eff`, not on the raw count: `UB = 1 − 0.05^(1/n_eff)`. A percentile bootstrap of a zero-event rate is degenerate (every resample has zero events, so its upper bound is zero) and is never used as the gate bound. The design-effect-adjusted CP bound is the gate bound; it is an approximation, not a hierarchical model, and every certificate carrying it is labelled `CP-DE`. The cluster bootstrap is reported beside it as a sensitivity check (aggregate JSON field `accepted_severe_ub95_bootstrap`).
 
 ### 10.2 Exact one-sided bounds and sample sizes
 
@@ -1163,7 +1169,7 @@ Two-proportion sample sizes (80% power, two-sided 5%): 1% vs 2% → **2,319 per 
 |---|---|---|---|
 | Mean MAE within a class, ±0.5 | tiles | ~8,100 (σ=15) to ~14,400 (σ=20) clustered | `(1.96σ/0.5)² × 2.35` |
 | Class ΔMAE = 2.5, 80% power | tiles | ~500 unclustered; ~1,180 clustered | `7.85σ²/δ²`; σ≈20 |
-| Texture ΔMAE = 1.7, 80% power | texture tiles | ~610 unclustered; ~1,440 clustered; ≥55 texture pages (≈1,540 tiles) | σ≈15–20; R1 uses the 1,300-page annual set (65 texture pages) |
+| Texture ΔMAE = 1.7, 80% power | texture tiles | ~610 unclustered; ~1,440 clustered; ≥55 texture pages (≈1,540 tiles) | σ_texture is **measured at calibration** (planning value 15–20); the required n is recomputed from the measured σ and reported; R1 uses the 1,300-page annual set (65 texture pages) |
 | Severe rate ±1 pp | pages | 1,244 at DE=1; 1,381 at DE 1.11; 1,804 at DE 1.45 | binomial × design effect |
 | Zero-event 1% | effective accepted pages or tiles | 299 effective; 332 raw pages at DE 1.11; 703 raw tiles at DE 2.35 | Clopper-Pearson on `n_eff` |
 | Zero-event 3.35% | effective accepted tiles | 89 effective; 210 raw at DE 2.35 | Clopper-Pearson on `n_eff` |
@@ -1330,6 +1336,7 @@ The last five columns are **v1 compatibility aliases**: `grad_mean`, `color_var`
   "scores": {
     "system_gain": 1.42, "system_gain_ci95": [0.61, 2.18],
     "coverage": 0.37, "accepted_severe": 0.006, "accepted_severe_ub95": 0.0097,
+    "certificate": "CP-DE", "accepted_severe_ub95_bootstrap": 0.0102,
     "gate": "A", "gate_threshold_frozen_by_harness": 0.665,
     "page_runtime_s": 2.63, "tile_runtime_p50_ms": 94
   },
@@ -1356,7 +1363,7 @@ submission/
   weights.sha256           # hashes; weights fetched from a pinned URL or included
   code/                    # inference entry point, determinism flags
   gate.py                  # run-time confidence gate; feature list in model_card
-  track_config.json        # which tracks, tile sizes, batch, seeds
+  track_config.json        # which tracks, tile sizes, batch, seeds, passes_per_page (1 or 4; 4 => C8 n/a)
   REPRODUCE.md             # one-command reproduction
 ```
 
@@ -1389,7 +1396,7 @@ The harness runs the code in a network-disabled container with the GT store unmo
 
 Each question has the experiment that would settle it, and what would change in v2.1.
 
-**O1 — What is the joint distribution of material and hidden-bleed class?** The census gives marginals (58% image, 29% flat, etc.) but not the joint; the synthetic generator assumes 50/50 hidden bleed on image edges. *Experiment:* raster+vector audit of 1,000 real pages, classifying every inked edge by material × depth. *Changes:* generator joint, production weights, and the R1/R2 sampling plan.
+**O1 — What is the joint distribution of material and hidden-bleed class?** The census gives marginals (58% image, 29% flat, etc.) but not the joint; the synthetic generator assumes 50/50 hidden bleed on image edges (`ASM-A1`). *Experiment:* raster+vector audit of 1,000 real pages, classifying every inked edge by material × depth. *Changes:* generator joint, production weights, and the R1/R2 sampling plan.
 
 **O2 — Does the 10 px apron help or hurt model quality?** The apron is added for latent alignment; it asks the model for 48 px instead of 38. *Experiment:* A/B FLUX Fill and an MAE/ViT baseline at `B=38` (unaligned) vs `B=48` (aligned), same tiles, same prompts, measuring A1/A2/C2/D6. *Changes:* if aligned-38 is not worse, v2.1 may drop the apron and keep 16-aligned tiles.
 
@@ -1485,6 +1492,12 @@ Every design decision, with its one-line reason. Metric IDs are in §4; `DD` num
 | DD58 | Tile-seam and ring-consistency metrics | A model can be locally good and globally inconsistent. |
 | DD59 | A6 thresholds stricter than edge repeat on flat | A 3-level step on a solid is a defect even when it is the best available. |
 | DD60 | 60-strip accept/reject + 300-pair human study with 3 raters | Cheap enough to repeat, powered for ranking and directional threshold checks. |
+| DD61 | V11 render region: BleedBox + apron, clipped to MediaBox, paper-padded and unscored | Real pages can lack pixels beyond the MediaBox; padding must not become GT. `padded_px` lives in the label store, so the 133-column CSV is unchanged. |
+| DD62 | C8 is `n/a` for four-pass whole-page models; C7 only | There is no single-pass arm to compare against; empty `ring_gap` is the existing n/a convention. |
+| DD63 | σ_texture measured at calibration, not assumed | The 15–20 planning range drives n; the measured value replaces it. |
+| DD64 | R1/R2 v1 figures are `provisional-until-freeze` | They come from v1 aggregates; the frozen private aggregate file is cited by SHA-256 at freeze. |
+| DD65 | BL11 omitted from numbers-to-beat unless its derivation is named and hashed | A constructed pipeline is not reproducible without its adapter identity. |
+| DD66 | Gate certificates labelled `CP-DE`, bootstrap UB reported beside | The design-effect CP bound is an approximation; the label prevents over-reading it. A1 is recorded as `ASM-A1`. |
 
 ---
 

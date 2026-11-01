@@ -36,16 +36,16 @@ Three audits (stats FAIL, prepress FAIL, compliance PASS WITH FIXES) were run on
 - **Human study:** 60 accept/reject/unsure strips + 300 pairs, print-size zoom formula, loupe, CMYK soft proof, ~5 rater-hours; threshold settings directional, press study O6 sets values.
 - **Schema:** v1 superset retained (133 columns, all 22 v1 columns present); added line/text coverage, per-seam regen, D1b, paper confidence/source, final trim identity.
 
-## Known residual items (non-blocking, but fix before freeze if time)
+## Residual items (all addressed in spec text, 2026-11-01 second session; pending re-audit)
 
-1. **PDF render region/MediaBox** for real Tier B/C pages is still not defined in the spec; render = BleedBox dilated by apron (clipped to MediaBox), pad missing pixels with paper. Needed for buildability.
-2. **C8 four-pass models:** if a model runs whole-page inference as four seam-anchored passes, C8's "single pass vs composite" comparison is n/a; state this explicitly and score C7 only.
-3. **Texture σ range** in §10.4 is quoted as σ≈15–20 for texture; pin the measured value at calibration.
-4. **R1/R2 sourcing:** 44.29/45.96 and 59% come from v1 aggregates; cite the frozen private aggregate file at freeze.
-5. **SD3-class baseline** is a constructed pipeline, not an official checkpoint; the exact adapter/derivation must be named at freeze.
-6. **CP-DE approximation:** design-effect-adjusted Clopper-Pearson is an approximation, not a hierarchical model; report the cluster bootstrap beside it and label the certificate `CP-DE`.
-7. **Synthetic joint assumption (A1):** 50/50 hidden bleed on image edges is an assumption; O1's 1,000-page audit settles it.
-8. **Judge N1:** judge training generator pool is now declared disjoint from human-labelled model strips, but leave-one-generator-out for a genuinely unseen submission generator still requires the advisory fallback; keep that rule.
+1. **PDF render region** — closed: new rule V11 (§3.4, §3.2): BleedBox + apron, clipped to MediaBox, paper-padded, unscored; `padded_px` in the label store (CSV stays 133 columns). DD61.
+2. **C8 four-pass models** — closed: C8 `n/a` (empty `ring_gap`), C7 only; `passes_per_page` in `track_config.json` (§4.3, §13.3). DD62.
+3. **Texture σ** — closed in text: measured at calibration, n recomputed (§10.4). DD63. **Value itself still to be measured at calibration.**
+4. **R1/R2 sourcing** — marked `provisional-until-freeze` (§9.4). DD64. **Still to do at freeze:** cite the private aggregate file + SHA-256.
+5. **SD3-class baseline** — rule added (§9.1 BL11). DD65. **Still to do at freeze:** name and hash the adapter.
+6. **CP-DE** — labelled everywhere; bootstrap UB field `accepted_severe_ub95_bootstrap` added to the aggregate JSON (§10.1, §13.2). DD66.
+7. **A1** — named `ASM-A1` (§3.1, O1); settled only by O1's audit.
+8. **Judge N1** — already explicit in §5.3 F4; no change needed.
 
 ## What to do next (in order)
 
