@@ -410,7 +410,7 @@ These rules decide whether an edge's GT is trustworthy and what class it is. The
 | Wide-gamut RGB (Adobe RGB) | 32 | 15 | 65 |
 | Corner tiles needed | 2,560 (4 × 640) | 1,200 | 5,200 |
 
-Texture is oversampled **2×** in the public **test manifest** (16/160 = 10% versus the 5% census population): the 32 texture pages are split 8 calibration / 8 validation / 16 test, so the test class claim has 16 pages, not 32. All aggregates are reported with census weights, so the oversampling cannot inflate the headline. A 4× oversample would require all 32 texture pages in the sealed test and would leave calibration/validation with zero texture pages, violating §3.5 stratification.
+Texture is oversampled **2×** in the public **test manifest** (16/160 = 10% versus the 5% census population): the 32 texture pages are split 8 calibration / 8 validation / 16 test, so the test class claim has 16 pages, not 32. The calibration split therefore carries 8 texture pages (2.5% of 320) **by design**; the generator's class-balance test is on the full 640-page eval set (5%), not per split, for classes below 60 pages. All aggregates are reported with census weights, so the oversampling cannot inflate the headline. A 4× oversample would require all 32 texture pages in the sealed test and would leave calibration/validation with zero texture pages, violating §3.5 stratification.
 
 ### 3.7 Canary and audit pages
 
@@ -547,7 +547,7 @@ C8  RCG       = mean |R_page − R_composited| over the ring (whole-page vs tile
 D1  trim_violations = |{p ∈ K : R_raw(p) ≠ I(p)}|  → MUST be 0; otherwise disqualification
 D1b final_trim_identity = 1[R_final(p) = I(p) for all p ∈ K]  → must be true (post-clamp gate)
 D2  preclamp_changed      = |{p ∈ K : R_raw(p) ≠ I(p)}|      (harness-computed, not self-reported)
-D3  preclamp_changed_frac = D2 / |K_seam2|,  K_seam2 = known pixels within 2 px of the seam
+D3  preclamp_changed_frac = min(1, D2 / |K_seam2|),  K_seam2 = known pixels within 2 px of the seam
 D4  preclamp_changed_max  = max over p ∈ K of max_c |R_raw(p,c) − I(p,c)|   [0,255]
 D5  regen_trim_px         = |{p ∈ K : effective_latent_mask(p) = unknown}|  [count]
 D6  clamp_seam_dE         = mean over seam pairs whose known side had a pre-clamp change of
@@ -796,10 +796,12 @@ Each detector is evaluated on the human labels with:
 ```text
 sensitivity Se, specificity Sp, AUROC, average precision
 PPV(0.05) from the formula above
-threshold chosen at 95% specificity on GT strips (or at the operating point that maximises PPV(0.05))
+threshold fixed at 95% specificity on the separate 2,000-strip GT detector-calibration set;
+never tuned on the 1,200 human-labelled strips
+95% interval for PPV(0.05): 1,000-resample bootstrap over strips, clustered by page/generator
 ```
 
-A detector is **gating** only if the lower bound of the 95% Clopper-Pearson interval on `PPV(0.05)` is ≥ 0.85 and `AUROC ≥ 0.85` on the frozen set; otherwise it is **advisory** (reported, not used in pass/fail). The CP lower bound replaces a point-estimate "precision ≥0.90", which a true-0.90 detector would fail about half the time. If no detector clears the bar, the benchmark says so: the gating hallucination claim is not available, and the human study (§12) becomes the only authority. That is an acceptable outcome; pretending otherwise is not.
+A detector is **gating** only if the lower bound of the bootstrap 95% interval on `PPV(0.05)` is ≥ 0.85 and `AUROC ≥ 0.85` on the frozen 1,200-strip set; otherwise it is **advisory** (reported, not used in pass/fail). The operating point is pre-specified (95% specificity), not the point that maximises PPV on the same strips used to compute the bound; max-then-bound is not a 95% statement. With only 400 clean model strips, the FPR that supports `PPV(0.05) ≥ 0.85` at `Se = 0.9` is ≈0.75%, which is a zero-FP knife-edge in 400 strips; if the interval cannot clear the bar, the detector is advisory, not gating. This rule prevents the benchmark from disqualifying models on the strength of a detector nobody has validated. If no detector clears the bar, the benchmark says so: the gating hallucination claim is not available, and the human study (§12) becomes the only authority. That is an acceptable outcome; pretending otherwise is not.
 
 **Synthetic injection is not validation.** Injected hallucinations have sharp, known boundaries and are easier than real ones. They are used to measure detector *recall* and to debug, never to set the precision threshold. The threshold comes from human labels on model outputs.
 
@@ -987,7 +989,7 @@ If the CI includes zero, the only permitted statement is “no difference at thi
 | Track | Name | Required for | Pages / tiles | Axes | Cost (per model, 100 ms/tile class) |
 |---|---|---|---|---|---|
 | **T0** | Sanity | harness builders | 20 analytic + 400 frozen stratified tiles | A, C, D | minutes |
-| **T1** | Standard tile | leaderboard | 160 test pages × 4 orientations × 28 tiles = 17,920 tile-runs at 512; 40 pages at 1024 (20 tiles × 4 orientations) | A, C, D, G, J | 0.5–10 GPU-h |
+| **T1** | Standard tile | leaderboard | 160 test pages × 4 orientations × 28 tiles = 17,920 tile-runs at 512; 40 pages at 1024 (20 tiles × 4 orientations) | A, C, D, G, J | 1–17 GPU-h |
 | **T2** | Whole page | leaderboard | 200 pages (test + validation) | A, B, C, G, J | 0.1–2 GPU-h |
 | **T3** | Restraint / hallucination | leaderboard | all NO_INK/STOP edges of the 160-page test split (≈80 quiet pages + STOP edges on the 80 inked pages) + 200 strips from the §5.4 validation set | B, C6 | 0.2–1 GPU-h |
 | **T4** | Robustness | production-router badge | 760 page-variants from the 200-page robustness manifest: 5 trim conditions (δ=+1,+2,+4,−1,−2) × 120 pages + 3 crop-mark offsets (0/9/38) × 40 pages + 40 partial-bleed pages | F | 0.3–2 GPU-h |
@@ -1084,7 +1086,7 @@ These are the v1 routing conditions restated as v2 gates. They are evaluated on 
 | # | Condition | v2 operationalisation | Status if failed |
 |---|---|---|---|
 | R1 | Texture-class MAE lower than LaMa's margin (LaMa 44.29 vs edge_repeat 45.96) with family-bootstrap CI excluding zero | `ΔMAE_texture = MAE_edge_repeat − MAE_model`, 95% family CI > 0 and point estimate > 1.67 | not a texture win; no routing claim on texture |
-| R2 | Flat-class severe rate < 5% (LaMa 59%) | `severe_rate_flat` with design-effect-adjusted exact upper bound ≤5%; unit = flat tiles | fails flat safety |
+| R2 | Flat-class severe rate < 5% (LaMa 59%) | `severe_rate_flat` with design-effect-adjusted exact upper bound ≤5%; unit = flat tiles; `n_eff = flat_tiles/DE_tile` | fails flat safety |
 | R3 | Overall severe rate ≤ edge repeat's v2 rate (pre-freeze placeholder 3.35%), or a gate achieving it on accepted tiles | Gate B accepted-tile severe ≤ edge-repeat v2 severe rate (95% UB), or ungated rate ≤ it | fails safety; fallback only |
 | R4 | Zero known pixels changed pre-clamp, or clamp seam no worse than edge repeat's v2 BGE (placeholder 3.78) | D2 = 0, or D6 ≤ 1.5 and C3 ≤ edge-repeat v2 BGE | fails known-pixel integrity |
 | R5 | < 100 ms per 512 px tile on one consumer GPU, measured quiet, or justified | H1 p50 ≤ 100 ms, or written justification accepted by maintainers | not cost-eligible; can still be reported |
@@ -1140,7 +1142,7 @@ Zero-event 95% upper bound: `1 − 0.05^(1/n_eff)`, where `n_eff = n / DE` at th
 | 332 | 299 | 1.00% | page-level 1% at `DE_page = 1.11` |
 | 350 | 315 | 0.95% | private acceptance set at DE 1.11 |
 | 1,000 | 1,000 | 0.30% | comfortable only if independent |
-| 1,300 | 1,235 (5% attrition) | 0.24% | private annual set (rate bound is a separate calculation) |
+| 1,300 | 1,171 (5% attrition, DE 1.11) | 0.26% | private annual set (rate bound is a separate calculation) |
 
 Proportion CI half-widths (95%, normal approximation, for planning only): 3.35% at n=160 → ±2.8 pp; n=640 → ±1.39 pp; n=1,244 → ±1.0 pp; n=1,300 → ±0.98 pp (at DE=1). With `DE_page = 1.11`, the 1,300-page annual set gives **±1.03 pp** (no attrition) to **±1.06 pp** (5% attrition), and the 350-page acceptance set gives **±1.99 pp**; a strict ±1.0 pp claim needs 1,244 analysable pages at DE=1 (≈1,381 at DE 1.11, ≈1,804 at DE 1.45). The benchmark reports the computed interval, never the nominal target.
 
@@ -1148,8 +1150,8 @@ Two-proportion sample sizes (80% power, two-sided 5%): 1% vs 2% → **2,319 per 
 
 ### 10.3 Why 1,300 pages and 400 families
 
-- The private severe-rate target is edge repeat's 3.35%. At `DE_page = 1` that is 1,244 analysable pages; with 5% attrition the planning target is 1,309. The annual set is **1,300 pages**, which supports **±1.03–1.06 pp at DE 1.11** and **±1.21 pp at DE 1.45** — not ±1.0 pp in the worst case. The report quotes the achieved interval; O5 tracks whether the ICC is low enough to tighten it.
-- A zero-event 1% accepted-page claim needs 299 **effective** accepted pages, i.e. 332 raw accepted pages at `DE_page = 1.11`. The **350-page acceptance set** leaves 18 pages of gate-rejection headroom (350 accepted = 0.95% bound at DE 1.11) and is therefore the correct size; a 300-page set would have no rejection headroom and is retained only as an ungated regression set.
+- The private severe-rate target is edge repeat's 3.35%. At `DE_page = 1` that is 1,244 analysable pages; with 5% attrition the planning target is 1,310. The annual set is **1,300 pages**, which supports **±1.03–1.06 pp at DE 1.11** and **±1.21 pp at DE 1.45** — not ±1.0 pp in the worst case. The report quotes the achieved interval; O5 tracks whether the ICC is low enough to tighten it.
+- A zero-event 1% accepted-page claim needs 299 **effective** accepted pages, i.e. 332 raw accepted pages at `DE_page = 1.11`. The **350-page acceptance set** leaves 18 pages of gate-rejection headroom (350 accepted = 0.95% bound at DE 1.11) and is therefore the correct size; a 300-page set cannot certify 1% at DE 1.11 (300/1.11 = 270 effective → 1.10%) and is retained only as an ungated regression set.
 - Family clustering: at 3–4 pages/family, 1,300 pages is ~350–400 families. If `ICC_page = 0.05` and `m_page ≈ 3.25`, `DE_page = 1.11`; at ICC 0.2 it is 1.45. The 400-family target provides margin for the unknown ICC. Families, not pages, are the bootstrap unit.
 - **Families for a 1% severe bound.** The bound is on accepted pages/tiles, not families: zero events in 299 effective units is the minimum. At ~3.25 pages/family, 299 effective pages is ~92 families before clustering; with a conservative ICC allowance the private target is 400 families.
 - Public synthetic: 640 eval pages / 64 families is enough for model development and rank correlation, not for a 1% claim. Public real: 300 / 100 is enough for cross-domain generalisation and a ±2.0 pp severe CI at a 3.35% rate (±5.7 pp worst case at p=0.5), not for production.
