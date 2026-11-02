@@ -1,73 +1,56 @@
-# Handoff — bleedBENCH v2.0 specification
+# Handoff — bleedBENCH v2.1
 
-**Date:** 2026-11-01 · **State:** protocol-freeze candidate, independently audited, S1 findings integrated. Not yet frozen; no harness implemented.
+**Date:** 2026-11-01 · **State:** v2.1 draft spec + reference harness + first private pilot tier (C0). Not frozen; the v2.0 re-audit is still pending and should now cover the v2.1 diff.
 
 ## What exists
 
 | Path | Purpose |
 |---|---|
-| `SPEC.md` | The complete benchmark specification (~27.5k words, 1,556 lines): one-page summary, v1 critique, task definition, three data tiers, metrics A–J, hallucination/restraint, structure continuation, aggregation, tracks, baselines, statistics, reproducibility, human study, leaderboard/schema, open questions, decision log. |
-| `docs/review-checklist.md` | Requirements checklist used by the independent audits (structure, axes, per-metric fields, hard constraints, do-nots, numerical checks). |
-| `reviews/stats-review.md` | Independent statistical audit (revision 1), plus post-fix verification addendum. |
-| `reviews/prepress-review.md` | Independent prepress/colour/metric audit (revision 1), plus post-fix verification addendum. |
-| `reviews/compliance-review.md` | Independent requirements audit (revision 1), plus post-fix verification addendum. |
-| `tools/verify_spec_numbers.py` | Recomputes geometry, sample sizes, exact bounds, census arithmetic and v1 numbers used in the spec. Stdlib only. |
-| `README.md` | Repository entry point. |
+| `SPEC.md` | Specification. v2.1 amendments in §0.1 (M1–M10), new pitfalls §1.3 (N1–N9), C0 pilot §3.3a, pseudo track §3.3b, V12–V14 + STOP rule in §3.4, D1/D2 fix in §4.4, dev table §9.5, O15–O17, DD67–DD86. |
+| `bleedbench/` | Reference harness (see README layout). |
+| `aggregates/census_c0.json` | Measured C0 priors (deployment and real-GT censuses), k ≥ 5 families per cell. |
+| `aggregates/dev_c0.json` | C0 dev table: per-method metrics, design effects, oracle-bias check, missing-bleed table, gates, achieved bounds. |
+| `aggregates/transfer_c0.json` | T10 pseudo→real transfer; O13 synthetic→real rank transfer. |
+| `aggregates/cost_c0.json` | Quiet batch-1 cost on the RTX 3090 (`clocks_locked=false`). |
+| `tests/` | 36 public tests (geometry, §9.3 self-tests, CIEDE2000 reference pairs, metrics, stats, privacy, resume, models) + 6 private leakage tests (`pytest -m private`). |
+| `tools/verify_spec_numbers.py` | Spec arithmetic incl. V12 geometry, census consistency, k-anonymity, dev DE identities. |
+| `tools/check_no_private.py` | Pre-commit privacy guard. |
 
-Run:
+Private, never committed (`_private/`, gitignored): inventory, review decisions, renders, input/label stores, `splits.json`, `oracle_c0.json`, run CSVs, weights (big-LaMa safetensors, trained models + manifests), gate models.
 
-```powershell
-python tools/verify_spec_numbers.py
-```
+## Results so far (C0 dev, real GT, FULL + NO_INK edges, 14 families)
 
-Expected: `All spec arithmetic checks passed.` (last run: 2026-11-01, pass).
-
-## What was fixed after audit
-
-Three audits (stats FAIL, prepress FAIL, compliance PASS WITH FIXES) were run on revision 1. Their S1s were integrated, then re-verified by the compliance and prepress auditors (both PASS WITH FIXES / PASS on S1s). Key fixes:
-
-- **Whole-page latent alignment:** claims scoped to what is achievable; right/bottom seam remainder `r = W mod 16` is stated, measured by D5/D6. Tile windows are seam-anchored, so 464/976 known bands hold.
-- **SystemGain:** one page-level definition (§0/§7.4/§7.6); no tile-weighted variant; gate remains tile-level with page acceptance = all tiles.
-- **Gate statistics:** 50/50 calibration selection/certification; DE-adjusted Clopper-Pearson bounds; Gate A ≥703 accepted tiles, Gate B ≥210 at DE 2.35; private 350-page acceptance set, 0.95% zero-event UB; 1,300-page annual set supports ±1.03–1.06 pp, not a nominal ±1 pp.
-- **SCS/C4:** no-line tiles are `n/a`; per-line tolerances are the operative pass rule; SCS is ranking-only; occlusion exclusion detected on frozen GT and capped.
-- **Data arithmetic:** STOP/FULL derivation from conditional probabilities; 829/451 integers pinned; texture test oversample 2× (8/8/16), full-set balance test; 1,200-strip hallucination set (400+400+400, 200 ambiguous subset).
-- **Metrics:** A1/A2/C3 thresholds above edge-repeat means; B5 per 1,000 tiles net of FPR; E6 scores model handling of out-of-gamut pixels; E3 net of rich-black round-trip floor; E4 two-sided; D1 raw pre-clamp + D1b final; ΔE00 in ICC PCS D50 via Bradford; paper estimate no longer trusts full-bleed ring.
-- **Cost:** H2 ≤3.5 s/page at 512, ≤2.5 s at 1024; FLUX cost 800–2,500 ms; quiet protocol.
-- **Human study:** 60 accept/reject/unsure strips + 300 pairs, print-size zoom formula, loupe, CMYK soft proof, ~5 rater-hours; threshold settings directional, press study O6 sets values.
-- **Schema:** v1 superset retained (133 columns, all 22 v1 columns present); added line/text coverage, per-seam regen, D1b, paper confidence/source, final trim identity.
-
-## Residual items (all addressed in spec text, 2026-11-01 second session; pending re-audit)
-
-1. **PDF render region** — closed: new rule V11 (§3.4, §3.2): BleedBox + apron, clipped to MediaBox, paper-padded, unscored; `padded_px` in the label store (CSV stays 133 columns). DD61.
-2. **C8 four-pass models** — closed: C8 `n/a` (empty `ring_gap`), C7 only; `passes_per_page` in `track_config.json` (§4.3, §13.3). DD62.
-3. **Texture σ** — closed in text: measured at calibration, n recomputed (§10.4). DD63. **Value itself still to be measured at calibration.**
-4. **R1/R2 sourcing** — marked `provisional-until-freeze` (§9.4). DD64. **Still to do at freeze:** cite the private aggregate file + SHA-256.
-5. **SD3-class baseline** — rule added (§9.1 BL11). DD65. **Still to do at freeze:** name and hash the adapter.
-6. **CP-DE** — labelled everywhere; bootstrap UB field `accepted_severe_ub95_bootstrap` added to the aggregate JSON (§10.1, §13.2). DD66.
-7. **A1** — named `ASM-A1` (§3.1, O1); settled only by O1's audit.
-8. **Judge N1** — already explicit in §5.3 F4; no change needed.
+- **Edge repeat is the best method measured** (mean MAE 10.74, median 1.00, severe 3.5%). No classical fill, LaMa, or trained model has a paired ΔMAE or SystemGain interval on the winning side of zero (the LaMa fine-tune ties it). Matches v1 (11.50 / 3.35%).
+- **LaMa** drifts on flat colour (2.45 vs 0.30) and does not win texture on C0; its raw output rewrites the trim on every tile.
+- **STOP is missing bleed:** 47% of real inked edges end exactly at the trim. Scoring "paper" there (v2.0) made every continuation method look catastrophic; v2.1 removes STOP from fidelity and scores restraint on NO_INK.
+- **Design effects are much larger than planned:** `DE_tile` 12.9 (v2.0 assumed 2.35), `DE_page` 1.84. No gate is certifiable on C0; that sizes Tier C.
+- **Pseudo GT ranks methods like real GT** (Spearman 0.95 over ten methods) but with different absolute errors; a pseudo-GT win does not imply a real-GT win.
+- **Synthetic transfer (O13):** Tier A vs C0 dev Spearman 0.64 (nine methods, low power), below the 0.8 target. bleedgen v0 is not yet a faithful ranking proxy.
+- **Trained models** (train_fit only, selected on train_dev, no real-GT family seen):
+  - `strip_unet_mix` (residual over edge repeat, 15.1 M params) converged to a zero residual; its dev output is identical to edge repeat. Ablations were skipped.
+  - `lama_ft_c0` (big-LaMa, 3,000 fine-tune steps) **ties** edge repeat: MAE 10.81 vs 10.74, ΔMAE +0.07 [−0.54, 1.69], SystemGain +0.21 [−3.48, 2.87]. It cuts LaMa's flat drift (0.79 vs 2.45; edge repeat 0.30) and wins on structure (24.9 vs 26.1), but its severe rate is 6.5% vs 3.5%, and it costs 92 ms/tile vs 16 ms. It beats edge repeat on pseudo pages (7.00 vs 8.23), which mostly does not transfer.
+  - No gate is selectable for any model on C0.
 
 ## What to do next (in order)
 
-1. **Re-audit current revision** (`SPEC.md` SHA recorded at commit) with the same three reviewers; freeze only after no S1 and the residual list above is closed or explicitly accepted.
-2. **Build `bleedgen`** from §3.1; implement the acceptance tests, especially the census and class-balance tests.
-3. **Implement the reference harness** (`bleedbench verify`): §9.3 analytic tests, 400-tile stratified check set, oracle file, v1 legacy mode, schema validator.
-4. **Freeze** `splits.json`, `synthetic_manifest.json`, `lite.json`, `robustness_manifest.json`, `oracle.json`, `expected_baselines.json`, `expected_baselines` with SHA-256s, then open the sealed test once.
-5. **Run the press study (O6)** for flat-drift/rich-black thresholds before freezing A6/B1 numbers.
-6. **Tier B sourcing:** licence-verified PDFs (CC0/PD/CC-BY), 300 pages / 100 families target; 120/40 minimum.
-7. **Private harness:** v1-compatible aggregate export, 350-page acceptance set per submission; do not export images or job data.
+1. **Re-audit** v2.0 + the v2.1 diff (same three reviewers). Items to check first: M1 (STOP semantics), M2 (D1/D2), M4 (A6 seam scope), M8 (gate units / DE), DD77 (cell-replacement rule).
+2. **Verify the 8 `inferred_trim` pages** by hand (`_private/review/inferred_verified.txt`) and re-run splits/census if any are promoted.
+3. **Collect Tier C** at the size the measured design effects require (§10): page-level claims need families, not tiles.
+4. **Quiet cost with locked clocks** (admin): `nvidia-smi -lgc` then `_private/cost.py`; set `clocks_locked=true`.
+5. **Freeze** thresholds (`protocol_c0_v2.1.json`), then open the C0 sealed test once.
+6. **Models worth trying next:** `lama_ft_c0` is the starting point. A model that beats edge repeat must keep its structure win without drifting on flat; a gate that routes only structure-class tiles to `lama_ft_c0` is the cheapest next test once Tier C makes gates certifiable. Also try class-conditional residuals and a perceptual or structure-continuation loss. Do not train on real-GT families.
+
+## Operational notes
+
+- The RTX 3090 dropped off the bus once under two concurrent sustained GPU jobs; `_private/pipeline.sh` runs GPU work sequentially and is resumable (page-level for scoring, step markers for stages). Consider a power limit (`nvidia-smi -pl 300`, admin).
+- Windows: DataLoader workers need a script file with a `__main__` guard (stdin scripts hang).
+- big-LaMa is loaded from `big_lama_generator.safetensors` (SHA `abfef2e8…`), converted once from the HF `smartywu/big-lama` checkpoint (zip SHA `f1b358ca…`) with a restricted unpickler.
 
 ## Freeze checklist
 
-- [ ] no S1 in the re-audit; residual list accepted
+- [ ] re-audit: no S1 on the v2.1 diff
 - [ ] `python tools/verify_spec_numbers.py` passes
-- [ ] spec SHA recorded in `reviews/` addenda
-- [ ] all provisional thresholds marked and frozen
-- [ ] sealed test unopened
-- [ ] v1 legacy regression reproduced (±5%)
-- [ ] schema validator passes the 133-column superset
-- [ ] `SystemGain` reproducible from the per-tile CSV alone (`page_mae`/`system_mae`)
-
-## Commit
-
-The commit for this handoff contains `SPEC.md`, `README.md`, `docs/`, `reviews/`, `tools/`, and this file. No private customer data, no model weights, no harness implementation.
+- [ ] `pytest` and `pytest -m private` pass
+- [ ] inferred-trim pages verified or excluded
+- [ ] thresholds frozen (A6, content classes, V1 integrity) on `cal_sel`
+- [ ] sealed test unopened until freeze

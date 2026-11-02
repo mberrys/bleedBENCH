@@ -1,0 +1,35 @@
+# Private corpus and everything derived from it. Never commit.
+_corpus
+_private
+runs
+
+# Environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Model weights
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.onnx
+
+# Images and documents (corpus-derived renders must stay private).
+# Test fixtures are generated at test time, not stored.
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.heic
+*.pdf
+*.zip
+.DS_Store
+
+# pytest temp dirs (sandbox TEMP can land in the repo)
+pytest-of-*/

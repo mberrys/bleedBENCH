@@ -1,6 +1,6 @@
-# bleedBENCH v2.0 — Benchmark specification for generative bleed extension in print production
+# bleedBENCH v2.1 — Benchmark specification for generative bleed extension in print production
 
-**Status:** protocol-freeze candidate, 2026-11-01 · **Supersedes:** medic benchmark v1 (run 2026-10-27) · **Deliverable:** specification only; no harness code.
+**Status:** v2.1 draft, 2026-11-01 · **Supersedes:** v2.0 (protocol-freeze candidate) and medic benchmark v1 (run 2026-10-27) · **Deliverable:** specification plus the reference harness in `bleedbench/` and a first private pilot tier (C0). The v2.1 amendments are listed in §0.1 and override any conflicting v2.0 text below; every amendment has a decision-log entry (DD67–DD85).
 
 **Audit status.** Revision 1 was independently audited by three reviewers (`reviews/stats-review.md`, `reviews/prepress-review.md`, `reviews/compliance-review.md`). Their S1 findings are integrated in this revision: whole-page latent alignment is now restricted to the seams it can actually align and the right/bottom remainder is measured; SCS has an explicit no-line convention; SystemGain is defined once at page level; the gate is selected and certified on disjoint calibration halves with design-effect-adjusted bounds; the 1,200-strip hallucination set, B5 unit, cost gates, texture oversampling and page-level 1% sample algebra are corrected. Residual S2/S3 items (e.g. merged report-only rows, the exactness of the CP-DE approximation, the synthetic joint assumption) are recorded in those reviews and in §14 rather than silently dropped.
 
@@ -66,6 +66,23 @@ This is the average page MAE the benchmark saves by routing to the model instead
 | H Cost | H1–H4, quiet protocol | v1 timings were under load |
 | I Scale | I1–I6 | 1024 px and whole page blow up compute |
 | J Corners | J1–J5 | Two edges must agree; v1 corner tiles were scored alone |
+
+## 0.1 What v2.1 changes (normative amendments)
+
+v2.1 is the first revision written against real data: a private print-shop corpus ("Tier C0", §3.3a) ingested, privacy-screened, rendered, labelled and split by the reference harness in `bleedbench/`. Each amendment below overrides conflicting v2.0 text and has a decision-log entry.
+
+| # | Amendment | Why (measured on C0 unless stated) | DD |
+|---|---|---|---|
+| M1 | **STOP is missing bleed, not restraint.** STOP edges have no fidelity GT; they leave A/C fidelity, `severe`, A6, gates and SystemGain and are reported in a separate missing-bleed table. Restraint (B1/B2/B9) is scored on NO_INK edges. | 290 of 615 real inked edges (47%; 44% of all 659 valid real edges) have art ending exactly at the trim; scoring "paper" there makes every continuation method look catastrophic (~147 MAE) and inverts the production intent. | DD84 |
+| M2 | **D1 on the returned output, D2–D4/D6 on the network output.** | v2.0 gave D1 and D2 the same formula with different consequences; every full-image model (LaMa) was a DQ. | DD83 |
+| M3 | **V12 scored ring** `min(b, floor(bleed_pt·dpi/72))`. | 142 of 169 real pages have 37.5 px of bleed at 300 DPI; the 38th pixel is half outside the BleedBox. | DD73 |
+| M4 | **A6 seam rule (C1 > 2) applies to flat and gradient tiles only.** | The all-class rule failed edge repeat on most structure/texture tiles (median seam step 8.7 / 11.3), violating §4.1's own requirement that the reference passes the absolute rules. | DD86 |
+| M5 | **Tier C0 pilot, pseudo-GT track P, train partitions.** | Real GT exists on 165 pages / 34 families only; no-bleed pages supply training data via inward crops (V13) but never headline numbers. | DD67–DD70 |
+| M6 | **Families from evidence, not filenames.** Union-find over folder, filename key, tracker client, text shingles, shared embedded images and render hashes, with hub suppression. | A naive folder rule merged 412 of 455 files (a preview portfolio and date-named batch folders mix clients); generic product words ("dinner", "wine") chained unrelated clients. | DD72 |
+| M7 | **Measured priors replace assumptions where precise enough.** | Quiet pages 27.9% (95% CI 16–40%) vs 50% assumed; P(FULL \| image edge) 26% (CI 9–73%) vs `ASM-A1` 50%; no real edge in the 2–29 px depth gap. | DD77 |
+| M8 | **Gate units are orientation-0 tiles; measured design effects replace planning values.** | Measured `DE_tile` = 12.9 (ICC 0.46, 27 tiles/page) vs 2.35 planned; four rotations of a tile are not independent. Tile-level Gate A needs ≈3,860 accepted tiles at this DE. | DD74 |
+| M9 | **Corpus-trained submissions** declare a training manifest audited against eval families and near-duplicates; real-GT families never train; gates are fitted on a partition disjoint from inpainter training. | Prevents the three leakage paths a real corpus opens: near-duplicate versions, stacking, and generator priors fitted on test families. | DD69–DD71, DD75, DD76 |
+| M10 | **Weights are loaded without unpickling.** Legacy checkpoints are converted once with a restricted unpickler to safetensors and pinned by SHA-256. | The big-LaMa checkpoint is a Lightning pickle; `weights_only=True` cannot load it. | DD85 |
 
 ---
 
@@ -134,6 +151,22 @@ v1 is a good first instrument: it established the production question, collected
 **C21 — The confidence gate is described as a three-feature score, but the features are not specified as a contract.** If different entries use different features and thresholds, “accepted severe ≤1%” is not comparable. v2 defines an allowed feature namespace (input-only), requires the gate to be submitted as code plus a declared feature list, and audits it (§13.4).
 
 **C22 — The private protocol's aggregate export is underspecified.** “Only aggregates exist” needs a precise allowlist, hashing salt, k-anonymity floor and re-identification checks, or the first serious contributor will fail its own legal review. v2 defines the export contract (§3.4).
+
+### 1.3 New pitfalls once a real corpus is used for training *and* evaluation (v2.1)
+
+v1's pitfalls are about measurement. Using a real corpus as training data adds leakage and population pitfalls; v2.1 names them and gives each a mechanism, not a promise.
+
+| # | Pitfall | v2.1 mechanism |
+|---|---|---|
+| N1 | Near-duplicate leakage: the same design exists as `v2`, `copy`, `final`, front/back, several sizes, imposed sheets and web previews | Evidence-based families (DD72) and a private leakage test: no family, render-hash pair (pHash ≤ 6 and dHash ≤ 8) or shared embedded image crosses a split |
+| N2 | Pseudo-GT shift: a page's own outer margin is not real bleed (safe zones, frames, text) | V13 rejection; track P is training/diagnostic only; the transfer gap is measured, never assumed (O15) |
+| N3 | Stacking leakage: a gate trained on the outputs of the data its inpainter trained on learns optimistic confidence | `gate_fit` partition disjoint from `train_fit`; τ selected on `cal_sel`, certified on untouched `cal_cert` |
+| N4 | Prior leakage: generator priors fitted on test families teach the test distribution | Census priors are computed on non-test families only (DD76) |
+| N5 | Evaluation population ≠ deployment population: real-GT pages are designer exports that already carry a BleedBox; production needs bleed mostly on pages that lack it | Two censuses (deployment vs real-GT), never pooled; O16 |
+| N6 | Half-pixel ring and fractional trims | V12 and device-space trim alignment |
+| N7 | PII in the corpus and memorisation in weights | Exclusion rules + per-file human review before any split; corpus-trained weights are private artefacts; exports are k ≥ 5-family aggregates validated by schema |
+| N8 | Unsafe or non-reproducible weights | No unpickling at evaluation; safetensors + SHA-256; licences recorded per baseline |
+| N9 | Reference baseline swamped by an invalid class | Class-stratified reporting is mandatory before any pooled mean (§7.9); M1 removed the class whose GT is not the desired output |
 
 ## 2. Task definition
 
@@ -353,6 +386,38 @@ With 640 eval pages this yields approximately: 320 quiet pages, 185 photo pages,
 
 **Aggregate export contract.** The harness emits: the per-tile CSV with hashed `case_id`/`family_id` (HMAC-SHA256 with a per-company salt, salt never exported); aggregate JSON with k-anonymity floor (no cell with <5 families is exported, suppressed cells marked); no images, no PDFs, no free-text, no timestamps finer than day, no absolute paths. The allowlist is enforced by a schema, not by convention.
 
+### 3.3a Tier C0 — private pilot (v2.1)
+
+**What it is.** One print shop's real job files (PDF and raster), used under the §3.3 aggregate-only contract. It is the first real data the benchmark has run on, and it is a **pilot**: it calibrates thresholds, measures design effects and priors, supplies training data, and produces a dev table — it does **not** certify production routing.
+
+**Intake (all automated steps are in `bleedbench/ingest`, all decisions are recorded privately):**
+
+1. Inventory: SHA-256 of every file, nested archives extracted with path-traversal checks, exact duplicates dropped.
+2. Exclusion rules: non-print types, unrelated datasets, phone photos, AI-generated images, and sensitive forms (payment authorisation, fingerprint cards, agreements, benefit guides, name badges, personal greetings) by generic rule plus a private file-specific list.
+3. PII screen on every PDF text layer (SSN, Luhn-valid card numbers, dates of birth, form keywords; phone/e-mail flagged); pages without a text layer go to a visual contact sheet. **No file enters a split without a recorded human decision.**
+4. Render: trim mapped to integer pixel `B` in device space; CropBox reset to MediaBox in memory; rotation normalised; V11 padding; V1 2× integrity measured.
+5. Labels: V2–V5, V12, V13, V14; vector material census from the PDF display list.
+
+**Counts (frozen splits, SHA in `aggregates/census_c0.json`):** 628 files inventoried; 455 candidate files after exclusions; 588 usable pages / 90 families after review. Real GT (`real_bleedbox`): 165 pages / 34 families. Inferred-trim candidates: 8 pages, unverified, unscored.
+
+| Partition | Pages | Real-GT pages | Families | Use |
+|---|---|---|---|---|
+| `cal_sel` | 79 | 43 | 6 | gate τ selection, threshold fitting |
+| `cal_cert` | 80 | 57 | 5 | gate certification only |
+| `val` | 64 | 32 | 11 | dev table, gated SystemGain |
+| `test` | 57 | 33 | 12 | sealed, read once after freeze |
+| `train_fit` | 215 | 0 | 8 | inpainter training (pseudo GT) |
+| `train_dev` | 31 | 0 | 11 | checkpoint selection |
+| `gate_fit` | 62 | 0 | 37 | gate model fitting |
+
+Families larger than 20% of a real-GT split's target are restricted to the calibration halves; families larger than 20% of `gate_fit`'s target are restricted to `train_fit`.
+
+**What C0 can and cannot claim.** With ~33 test pages from 12 families, a zero-event one-sided 95% bound on page severe is ≈ 8.7% before the design effect — C0 cannot support a 1% claim at any unit. Tile-level Gate A needs `299 × DE_tile` ≈ 3,860 accepted orientation-0 tiles at the measured `DE_tile` = 12.9; the calibration halves hold far fewer, so Gate A is **not certifiable on C0** and Gate B is reported as a pilot certificate. These are results, not failures: they size the Tier C collection (§10).
+
+### 3.3b Track P — pseudo ground truth (v2.1)
+
+Pages without a BleedBox (the deployment population) can still provide supervised strips: the MediaBox inset by `B` is treated as a pseudo-trim and the page's own outer pixels as the ring. V13 removes edges whose outer band holds text, frame lines or marks. Track P is used for (i) training (`train_fit`), (ii) checkpoint selection (`train_dev`), (iii) gate fitting (`gate_fit`), and (iv) the **transfer diagnostic** T10: the same methods scored on pseudo pages of the dev families, reported beside the real-GT table. Track P numbers are never pooled with real GT and never appear in a headline.
+
 ### 3.4 Validity rules (fixed for pale tints)
 
 These rules decide whether an edge's GT is trustworthy and what class it is. They do **not** drop an edge because the artwork stops at the trim; they classify it.
@@ -385,6 +450,14 @@ These rules decide whether an edge's GT is trustworthy and what class it is. The
 **V10 — Label isolation.** GT, paper estimates, class labels and depth are stored in a separate label store with a different access path from the input store; no run-time component may read it.
 
 **V11 — Render region.** For real pages (Tier B/C) the render region is the BleedBox dilated by the apron `a` on each side, clipped to the MediaBox. Pixels of the dilated region that fall outside the MediaBox are filled with the paper estimate (V2) and counted per edge as `padded_px`, stored in the label store (not in the per-tile CSV). Padded pixels carry no GT: they are treated like V8 (unscored, never counted in A/B/C/E metrics) and are excluded from paper estimation. An edge whose scored ring `b` is itself partly padded (BleedBox exceeds MediaBox) is invalid under V5 (GT not trustworthy), not silently scored. Synthetic Tier A renders the full canvas and has `padded_px = 0`.
+
+**V12 — Scored ring on real pages (v2.1).** The model is still asked for `B` pixels and `b` stays `ceil(bleed·dpi)`, but on a real page only pixels whose footprint lies wholly inside the BleedBox are scored: `ring_scored_px = min(b, floor(bleed_pt · dpi / 72))`. At 300 DPI a 0.125 in BleedBox is 37.5 px, so 37 px are scored and the 38th (half outside the box) is not. Measured on C0: 142 of 169 real pages have exactly 37.5 px of bleed; without V12 every one of them would score a blended half-pixel column. The canvas is rendered with the trim mapped to integer pixel `B` (device-space translation), never by rounding a page-space clip.
+
+**V13 — Pseudo-GT validity (v2.1, track P only).** A page without a BleedBox can supply a *pseudo* ring by treating the MediaBox inset by `B` as the trim. Such an edge is rejected if its outer band contains a text block, a straight line parallel to the edge (frame/rule test: a row differing by > 10 dE00 from rows ±3 on ≥ 60% of positions), or crop marks. Pseudo rings measure continuation of a page's own margin, which is systematically different from real bleed (safe zones, frames); they are training and transfer-diagnostic data only and never enter a headline (DD68).
+
+**V14 — Not GT (v2.1).** Imposed sheets (n-up), rasters below 240 DPI (unless their pixel size equals a standard trim or trim + 0.25 in at exactly 300 DPI), and pages whose bleed is inferred from a media size of "standard + 0.25 in" without a TrimBox are not ground truth. The last group (`gt_source = inferred_trim`) may be promoted to scored GT only after a human verifies the trim, page by page, and is reported as its own stratum (DD79).
+
+**STOP reinterpreted (v2.1, DD84).** v2.0 treated `STOP` (ink at the trim, `D_e ≤ 1`) as a restraint class whose correct answer is paper. On real print-ready files this is wrong: art that touches the trim and does not continue is the classic missing-bleed defect (a sub-millimetre cutting error shows a white sliver), and the production intent on such an edge is to extend the art. The GT ring of a STOP edge is therefore **not** the desired output, and a STOP edge has no fidelity GT. From v2.1: STOP edges are excluded from A/C fidelity, `severe`, A6, gates and SystemGain; they are reported in a separate *missing-bleed* table (prevalence, and the fraction of the ring each method extends). Restraint (B1/B2/B9, A6 "invented ink") is scored on **NO_INK** edges, where the trim itself is paper and the correct ring is paper. Synthetic generators MUST NOT produce paper-beyond-trim targets for inked edges.
 
 ### 3.5 Family definitions, splits and contamination
 
@@ -567,6 +640,8 @@ D6  clamp_seam_dE         = mean over seam pairs whose known side had a pre-clam
 | D4 | Max pre-clamp change | 0–255 | ↓ | > 8 levels | `edge_repeat` = 0 | Whether the change is in a visually critical region |
 | D5 | Regenerated trim pixels | 0–∞ | ↓ | > 0 on tile-mode or left/top whole-page seams for declared `L ≤ 16`; expected and scored on right/bottom whole-page seams | `gt_copy` = 0 | Models that declare `L=32` and accept a 16 px regenerated band |
 | D6 | Clamp-seam dE | 0–100 | ↓ | > 1.5 | `gt_copy` = 0 | A clamp seam visible as a texture/boundary discontinuity but not as colour |
+
+**v2.1 correction (DD83).** In v2.0, D1 and D2 had the same formula with different consequences (DQ vs badge), which disqualifies every full-image model even when it composites like production does. v2.1 separates the two outputs a learned submission has: `R_sub`, what the submission returns (it MUST copy known pixels itself, as production places the original page unchanged), and `R_net`, the network's own pre-composite output, which a submission SHOULD expose (`last_raw`). **D1 is computed on `R_sub`** and remains a disqualification. **D2–D4 and D6 are computed on `R_net`** when exposed (otherwise on `R_sub`, which makes them 0) and measure how much of the trim the network rewrote — a property of the model, reported and used for the production-candidate badge, never a DQ.
 
 **D1 is a gate, not a score.** The harness keeps the raw pre-clamp output. A submission that changes a trim pixel is disqualified; it is not “penalised 5 points”. This mirrors the production PDF, where the original page is placed unchanged. `D1b` verifies the final (clamped) canvas independently; D1 would otherwise be trivially true because the harness clamps. The submission's `last_changed` attribute is informational only and is never trusted for scoring.
 
@@ -1096,7 +1171,7 @@ These are the v1 routing conditions restated as v2 gates. They are evaluated on 
 | R5 | < 100 ms per 512 px tile on one consumer GPU, measured quiet, or justified | H1 p50 ≤ 100 ms, or written justification accepted by maintainers | not cost-eligible; can still be reported |
 | R6 | Captures a good share of the oracle headroom | On tiles where edge repeat loses (`oracle_mae ≤ edge_mae − 1`): `HeadroomGain = Σ (edge_mae − MAE_m)` over those tiles; require `HeadroomGain ≥ 0.5 × Σ (edge_mae − oracle_mae)` with family CI > 0 | no routing value |
 | R7 | SystemGain positive with family-bootstrap 95% CI excluding zero | `SystemGain > 0`, CI lower bound > 0, at a certified Gate A or Gate B | no production router candidacy |
-| R8 | Restraint non-inferiority | `B9 ≥ 0.98` on STOP edges; `B1 = 0` on STOP edges | fails restraint; cannot route on mixed jobs |
+| R8 | Restraint non-inferiority | `B9 ≥ 0.98` on NO_INK edges; `B1 = 0` on NO_INK edges (v2.1, DD84: STOP edges are missing bleed and are not restraint tests) | fails restraint; cannot route on mixed jobs |
 
 **Oracle headroom.** v1 measured 2.5–2.9 MAE per tile of headroom over edge repeat. R6 is deliberately demanding: a transformer that recovers less than half of the available headroom on the tiles where the baseline loses is not worth a 100 ms budget, let alone a 2 s one. The headroom calculation uses the **frozen reference oracle**, not a per-submission oracle, so it cannot be inflated by including the submission itself.
 
@@ -1105,6 +1180,32 @@ These are the v1 routing conditions restated as v2 gates. They are evaluated on 
 **R1/R2 provenance.** The R1 figures (LaMa 44.29, edge repeat 45.96, margin 1.67) and the R2 figure (LaMa 59% flat severe) are v1 aggregates and are `provisional-until-freeze`. At freeze they are replaced by, or reconciled against, the frozen private aggregate file, cited by file name and SHA-256 in `expected_baselines.json`; until then R1/R2 results are reported but not used for a pass/fail routing claim.
 
 **What “beats v1” means.** v1's `sd_refine` matched edge repeat at 2,600× cost. Under v2, a transformer must beat R1–R8 simultaneously; a model that only matches MAE but fails R2/R4/R5 is a regression in production terms even if its mean MAE is lower. The 2.5–2.9 MAE headroom is the bar, not the 0.1 MAE difference between two classical fills.
+
+### 9.5 First C0 dev table (v2.1, pilot)
+
+Real-GT FULL and NO_INK edges of the calibration and validation families (73 pages / 14 families with scored edges; 1,962 orientation-0 tiles, four orientations scored). Frozen 7-method oracle (`oracle_c0.json`, SHA in `aggregates/dev_c0.json`), frozen before any trained model existed. Intervals are 95% family-cluster bootstrap and are **few-cluster** (14 families). Runtimes here are fidelity-run timings under load; quiet batch-1 cost is in `aggregates/cost_c0.json`.
+
+| Method | Mean MAE | Median | p90 | Severe | ΔMAE vs edge repeat (95% CI) | Ungated SystemGain (95% CI) |
+|---|---|---|---|---|---|---|
+| `edge_repeat` | 10.74 | 1.00 | 41.9 | 3.5% (CP-DE UB 5.0%) | — | — |
+| `ns` | 11.03 | 1.33 | 43.5 | 6.7% | +0.29 [0.00, 0.41] | −0.01 [−0.38, 0.37] |
+| `stretch` | 11.51 | 1.17 | 42.9 | 4.1% | +0.77 [−0.17, 3.52] | −1.96 [−8.84, 0.61] |
+| `telea` | 11.70 | 3.36 | 39.8 | 27.5% | +0.97 [0.49, 1.41] | −0.26 [−1.12, 0.11] |
+| `lama` | 12.22 | 3.60 | 41.1 | 25.3% | +1.48 [0.51, 1.89] | −2.36 [−3.58, 1.68] |
+| `mirror` | 12.62 | 1.69 | 37.0 | 8.8% | +1.88 [−0.08, 7.58] | −3.52 [−18.8, 2.36] |
+| `linear_extrapolation` | 13.46 | 2.08 | 45.3 | 23.1% | +2.72 [−1.68, 4.32] | −3.61 [−6.28, 4.12] |
+| `lama_ft_c0` (trained, not oracle) | 10.81 | 1.91 | 37.5 | 6.5% | +0.07 [−0.54, 1.69] | +0.21 [−3.48, 2.87] |
+| `strip_unet_mix` (trained, not oracle) | 10.74 | 1.00 | 41.9 | 3.5% | 0.00 (output identical to edge repeat) | 0.00 |
+
+**Trained models (P6).** Both were trained only on `train_fit` (bleedgen v0 synthetic + pseudo-GT pages), selected on `train_dev`, and never saw a real-GT family. `strip_unet_mix` (15.1 M-parameter residual over edge repeat) converged to a zero residual: its dev output is bit-identical to edge repeat, so the Tier A / pseudo-only ablations were not run. `lama_ft_c0` (big-LaMa fine-tuned 3,000 steps) is the first method that **ties** edge repeat on real GT: mean ΔMAE +0.07 and SystemGain +0.21, both intervals spanning zero. It removes most of LaMa's flat-colour drift (flat class MAE 0.79, vs 2.45 for LaMa and 0.30 for edge repeat) and wins on structure (24.9 vs 26.1), but its severe rate is still twice edge repeat's (6.5% vs 3.5%), driven by flat and gradient tiles. On pseudo pages it beats edge repeat clearly (7.00 vs 8.23, orientation 0); on real GT the same comparison is 10.55 vs 10.74. The pseudo gain mostly does not transfer. Quiet batch-1 cost: 92 ms/tile p50 vs 16 ms for edge repeat (`cost_c0.json`, `clocks_locked=false`). No gate (A or B) is selectable for either model on `cal_sel`, for the same sample-size reason as LaMa.
+
+**Reading.** On real print jobs edge repeat is not just a strong baseline, it is the best method measured: median ring error 1 level, the lowest severe rate, and no method's paired delta or SystemGain interval lies on the winning side of zero. LaMa reproduces v1's finding — it drifts on flat colour (class MAE 2.45 vs 0.30) — and on C0 it does not win on texture either (58.3 vs 56.4; 14 pages, insufficient). Its raw output rewrites trim pixels on every tile (D2 > 0), which v2.1 reports but does not disqualify (DD83). The v1 numbers this replicates: edge repeat 11.50 mean / 3.35% severe (v1, 6-method oracle) vs 10.74 / 3.5% here (7-method oracle; O14: adding LaMa to the oracle moves severe rates by ≤ 0.9 pp).
+
+**Gates.** No gate for LaMa can be selected on `cal_sel` at either level: at the measured `DE_tile` = 12.9, Gate B (target = edge repeat's own severe rate on the same half, 1.8%) needs ≥ 1,148 accepted orientation-0 tiles; the half does not contain that many scored tiles. Entries are therefore reported ungated. This is the size statement C0 exists to produce: certification needs the Tier C collection.
+
+**Transfer (T10, O15).** On pseudo pages of the same dev families the ten methods (eight frozen plus the two trained models) rank almost identically to real GT (Spearman 0.95; 0.90 for the eight frozen methods alone), but absolute errors differ (edge repeat 8.2 pseudo vs 10.7 real). Pseudo GT is a usable ranking and training signal, not a substitute for real-GT scores, and a pseudo-GT win is not evidence of a real-GT win (`lama_ft_c0` above).
+
+**Synthetic transfer (O13).** Tier A (bleedgen v0, 128 held-out pages, orientation 0) vs C0 dev ranks nine methods with Spearman 0.64. That is below the 0.8 target, but with nine methods it is low power. Tier A errors are about half of real ones (edge repeat 4.38 vs 10.74), and Tier A penalises LaMa much harder (8.40) than real jobs do. bleedgen v0 is not yet a faithful proxy for ranking.
 
 ---
 
@@ -1396,6 +1497,8 @@ The harness runs the code in a network-disabled container with the GT store unmo
 
 Each question has the experiment that would settle it, and what would change in v2.1.
 
+**Status after C0 (v2.1).** O1 partially settled (P(FULL | image edge) 26%, CI 9–73%, 17 families — direction clear, precision not); O4 measured (99.3% of pages unrotated; 24% landscape); O5 measured (`ICC_tile` 0.46 → `DE_tile` 12.9 on orientation-0 tiles; `ICC_page` and `DE_page` in `aggregates/dev_c0.json`) — the v2.0 planning values were optimistic; O13 measured (Tier A vs C0 dev Spearman 0.64 over nine methods, below the 0.8 target, low power) and O14 measured (oracle change ≤ 0.9 pp). New: O15–O17.
+
 **O1 — What is the joint distribution of material and hidden-bleed class?** The census gives marginals (58% image, 29% flat, etc.) but not the joint; the synthetic generator assumes 50/50 hidden bleed on image edges (`ASM-A1`). *Experiment:* raster+vector audit of 1,000 real pages, classifying every inked edge by material × depth. *Changes:* generator joint, production weights, and the R1/R2 sampling plan.
 
 **O2 — Does the 10 px apron help or hurt model quality?** The apron is added for latent alignment; it asks the model for 48 px instead of 38. *Experiment:* A/B FLUX Fill and an MAE/ViT baseline at `B=38` (unaligned) vs `B=48` (aligned), same tiles, same prompts, measuring A1/A2/C2/D6. *Changes:* if aligned-38 is not worse, v2.1 may drop the apron and keep 16-aligned tiles.
@@ -1421,6 +1524,12 @@ Each question has the experiment that would settle it, and what would change in 
 **O12 — How should spot-colour tint ramps be extended?** A spot recipe is a solid ink at a tint; extrapolating a tint ramp across the trim is not the same as extending a CMYK image. *Experiment:* 100 spot pages with known ramps, compare nearest-tint vs continuous-tint scoring. *Changes:* E7 definition, spot pages in the colour track.
 
 **O13 — Does the benchmark's synthetic generator transfer to real jobs?** The public set may reward texture synthesis rather than print continuation. *Experiment:* rank correlation of methods between Tier A test and Tier C dev; target ρ ≥0.8. *Changes:* generator mix, or a transfer correction in the public leaderboard.
+
+**O15 — How large is the pseudo→real transfer gap? (v2.1)** Track P scores a page's own margin. *Experiment:* the same frozen methods on pseudo pages and real-GT pages of the same dev families (T10); rank agreement and per-method gap. *Changes:* whether pseudo-trained models need real-GT fine-tuning before routing.
+
+**O16 — How different is the deployment population from the real-GT population? (v2.1)** Real-GT pages are designer exports that already have a BleedBox; the pages that need generated bleed mostly do not. *Experiment:* compare class, material and size distributions of the two C0 censuses; importance-weight dev results by deployment covariates. *Changes:* production weights (DD78) and Tier C sampling.
+
+**O17 — Is the half-pixel column beyond a 37.5 px BleedBox ever artwork? (v2.1)** *Experiment:* count edges where the 38th column carries ink unlike column 37. *Changes:* whether V12 rounds down or the renderer supersamples that column.
 
 **O14 — How large is the severe-rule oracle bias?** The severe rule depends on the frozen seven-method oracle; a strong new method may make historical methods look worse. *Experiment:* recompute v1 severe rates under several plausible oracle sets. *Changes:* whether severe stays relative or becomes absolute-only.
 
@@ -1498,6 +1607,26 @@ Every design decision, with its one-line reason. Metric IDs are in §4; `DD` num
 | DD64 | R1/R2 v1 figures are `provisional-until-freeze` | They come from v1 aggregates; the frozen private aggregate file is cited by SHA-256 at freeze. |
 | DD65 | BL11 omitted from numbers-to-beat unless its derivation is named and hashed | A constructed pipeline is not reproducible without its adapter identity. |
 | DD66 | Gate certificates labelled `CP-DE`, bootstrap UB reported beside | The design-effect CP bound is an approximation; the label prevents over-reading it. A1 is recorded as `ASM-A1`. |
+| DD67 | Tier C0 is a pilot: calibration, dev, training and design-effect estimation, never a production certificate | 34 real-GT families cannot bound a 1% rate; claiming otherwise repeats v1's C13. |
+| DD68 | Pseudo-GT (track P) is training and transfer-diagnostic data only | A page's outer margin is not real bleed; the gap is measured (T10), not assumed. |
+| DD69 | A family lives in exactly one partition; real-GT families never train | Near-duplicate versions inside a family would otherwise leak across the boundary. |
+| DD70 | Train is partitioned `train_fit` / `train_dev` / `gate_fit` | Checkpoint selection and gate fitting must not see inpainter training data. |
+| DD71 | `cal_cert` is touched only by certification | Thresholds, class rules and τ are fitted on `cal_sel` or train partitions. |
+| DD72 | Families by multi-signal union-find with hub suppression; date-named and >20-file folders are not family evidence; merge when uncertain | Measured: folder-only linking merged 412/455 files through a preview portfolio and print-batch folders. |
+| DD73 | V12 scored ring `min(b, floor(bleed_pt·dpi/72))` | 0.125 in at 300 DPI is 37.5 px; the half pixel is not GT. |
+| DD74 | Gate selection/certification units are orientation-0 tiles; DE measured on those units | Rotations of a tile are near-copies; counting them inflates `n` four-fold. |
+| DD75 | Corpus-trained submissions declare a training manifest (page keys, template ranges, splits SHA); the harness audits it | The only way to make "no eval data in training" checkable. |
+| DD76 | Generator priors come from non-test families; public generator assets are CC0/OFL only | Prior leakage is training leakage by another route. |
+| DD77 | A census cell replaces a v2.0 assumption only if its 95% family-bootstrap CI half-width ≤ 10 pp; otherwise the generator shrinks halfway toward the measurement and both are reported | Measured cells are wide (few families); replacing outright would trade one assumption for noise. |
+| DD78 | Production weights are recomputed from the deployment census at Tier C freeze, not from C0 | C0's deployment census is one shop; weights are a population claim. |
+| DD79 | `inferred_trim` pages (no TrimBox, media = standard + 0.25 in) are scored only after per-page human verification, as their own stratum | The trim is inferred, not declared. |
+| DD80 | Imposed sheets and sub-240-DPI rasters are not GT (kept as family-link evidence) | They duplicate other pages or carry upsampled pixels. |
+| DD81 | C0 stores are 8-bit PNG | The renderer is 8-bit; 16-bit remains normative for Tier A. |
+| DD82 | Cost runs declare GPU and `clocks_locked`; unlocked runs are ineligible for H comparisons | Clock locking needs admin rights; the flag keeps the result honest. |
+| DD83 | D1 on the returned output (DQ); D2–D4/D6 on the exposed network output (reported) | Removes the v2.0 contradiction that disqualified every full-image model. |
+| DD84 | STOP = missing bleed: no fidelity GT, separate table; restraint on NO_INK | Art touching the trim without extension is a prepress defect; "paper" is not the desired output. |
+| DD85 | Weights are never unpickled at evaluation: restricted-unpickler conversion to safetensors, SHA-256 pinned | Arbitrary-code execution risk in legacy checkpoints. |
+| DD86 | A6 seam rule (C1 > 2) applies to flat and gradient only | Keeps §4.1's rule that the reference passes its own absolute thresholds. |
 
 ---
 

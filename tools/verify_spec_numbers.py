@@ -47,6 +47,58 @@ def n_halfwidth(p: float, hw: float, z: float = 1.959963984540054) -> int:
     return math.ceil(z * z * p * (1 - p) / (hw * hw))
 
 
+def v21_checks() -> None:
+    """v2.1 additions: V12 scored ring, C0 census consistency, achieved C0 bounds."""
+    import json
+    from pathlib import Path
+    # V12: 0.125 in at 300 DPI is 37.5 px; b rounds up (38), the scored ring rounds down (37)
+    check("v12 bleed px 0.125in@300", 9.0 * 300 / 72, 37.5)
+    check("v12 scored 0.125in@300", min(38, math.floor(9.0 * 300 / 72)), 37)
+    check("v12 scored 0.25in@300", min(38, math.floor(18.0 * 300 / 72)), 38)
+    check("v12 scored 0.125in@150", min(19, math.floor(9.0 * 150 / 72)), 18)
+    agg = Path(__file__).resolve().parent.parent / "aggregates"
+    c = agg / "census_c0.json"
+    if not c.exists():
+        print("SKIP  census_c0.json not present")
+        return
+    cen = json.loads(c.read_text(encoding="utf-8"))
+    dep = cen["deployment"]
+    for key in ("size", "colour", "rotation", "orientation"):
+        tot = sum(v["p"] for v in dep[key].values() if not v.get("suppressed"))
+        check(f"census {key} shares sum to 1", round(tot, 3), 1.0, tol=0.002)
+    real = cen["real_gt_non_test"]
+    sh = sum(v["p"] for v in real["material_share_inked"].values() if not v.get("suppressed"))
+    check("census inked material shares sum to 1", round(sh, 3), 1.0, tol=0.002)
+    cc, dh = real["edge_class_counts"], real["depth_q90_hist"]
+    check("census depth hist == FULL+STOP+NO_INK edges", sum(dh.values()), sum(cc.values()))
+    check("census depth gap 2-29 empty (bimodality)", dh.get("2-29", 0), 0)
+    check("census p_full_given_inked n == FULL+STOP", real["p_full_given_inked"]["n"],
+          cc.get("FULL", 0) + cc.get("STOP", 0))
+    for f in agg.glob("*.json"):
+        def walk(o):
+            if isinstance(o, dict):
+                if "n_families" in o and not o.get("suppressed"):
+                    assert o["n_families"] >= 5, f"{f.name}: k-anonymity breach"
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+        walk(json.loads(f.read_text(encoding="utf-8")))
+    check("aggregates k-anonymity (n_families >= 5)", True, True)
+    d = agg / "dev_c0.json"
+    if d.exists():
+        dev = json.loads(d.read_text(encoding="utf-8"))
+        des = dev["design"]
+        check("dev DE_tile = 1+(m-1)ICC", round(1 + (des["tiles_per_page"] - 1) * des["icc_tile"], 2),
+              round(des["de_tile"], 2), tol=0.02)
+        check("dev DE_page = 1+(m-1)ICC", round(1 + (des["pages_per_family"] - 1) * des["icc_page"], 2),
+              round(des["de_page"], 2), tol=0.02)
+        b = dev["achieved_bounds_test"]
+        check("C0 test zero-event UB (pages, raw)", round(cp_upper(0, b["pages"]), 4),
+              b["zero_event_ub95_pages_raw"], tol=2e-4)
+
+
 def main() -> int:
     # Geometry
     check("b 0.125in@150", math.ceil(0.125 * 150), 19)
@@ -140,6 +192,7 @@ def main() -> int:
     check("seam dE fail < seam step fail", 1.0 < 2.0, True)
 
     print()
+    v21_checks()
     if FAILS:
         print(f"{len(FAILS)} FAILED: {FAILS}")
         return 1

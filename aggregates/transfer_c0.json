@@ -1,0 +1,159 @@
+{
+ "o13_rank_transfer": {
+  "c0_mae": {
+   "edge_repeat": 10.7391,
+   "lama": 11.9757,
+   "lama_ft_c0": 10.5521,
+   "linear_extrapolation": 13.4568,
+   "mirror": 12.618,
+   "ns": 11.1025,
+   "stretch": 11.5091,
+   "strip_unet_mix": 10.7391,
+   "telea": 11.6803
+  },
+  "low_power": true,
+  "methods": 9,
+  "spearman": 0.6444,
+  "tier_a_mae": {
+   "edge_repeat": 4.3816,
+   "lama": 8.4017,
+   "lama_ft_c0": 5.0424,
+   "linear_extrapolation": 6.9639,
+   "mirror": 5.0146,
+   "ns": 4.7379,
+   "stretch": 5.0489,
+   "strip_unet_mix": 4.3816,
+   "telea": 5.2197
+  }
+ },
+ "protocol": "bleedbench-v2.1",
+ "t10_transfer": {
+  "methods_compared": 10,
+  "pseudo": {
+   "edge_repeat": {
+    "mae_mean": 8.2289,
+    "mae_median": 3.2084,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "lama": {
+    "mae_mean": 8.7735,
+    "mae_median": 5.3419,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "lama_ft_c0": {
+    "mae_mean": 6.996,
+    "mae_median": 3.3488,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "linear_extrapolation": {
+    "mae_mean": 15.2488,
+    "mae_median": 9.9502,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "mirror": {
+    "mae_mean": 12.2576,
+    "mae_median": 4.6472,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "ns": {
+    "mae_mean": 8.4567,
+    "mae_median": 3.5562,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "paper_fill": {
+    "mae_mean": 113.1915,
+    "mae_median": 108.1113,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "stretch": {
+    "mae_mean": 9.1997,
+    "mae_median": 3.8086,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "strip_unet_mix": {
+    "mae_mean": 8.2289,
+    "mae_median": 3.2084,
+    "n_families": 13,
+    "tiles": 1827
+   },
+   "telea": {
+    "mae_mean": 8.8833,
+    "mae_median": 4.1864,
+    "n_families": 13,
+    "tiles": 1827
+   }
+  },
+  "real": {
+   "edge_repeat": {
+    "mae_mean": 10.7391,
+    "mae_median": 1.002,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "lama": {
+    "mae_mean": 11.9757,
+    "mae_median": 3.9665,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "lama_ft_c0": {
+    "mae_mean": 10.5521,
+    "mae_median": 1.9055,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "linear_extrapolation": {
+    "mae_mean": 13.4568,
+    "mae_median": 2.0799,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "mirror": {
+    "mae_mean": 12.618,
+    "mae_median": 1.6947,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "ns": {
+    "mae_mean": 11.1025,
+    "mae_median": 1.3333,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "paper_fill": {
+    "mae_mean": 75.2382,
+    "mae_median": 27.9456,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "stretch": {
+    "mae_mean": 11.5091,
+    "mae_median": 1.1729,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "strip_unet_mix": {
+    "mae_mean": 10.7391,
+    "mae_median": 1.002,
+    "n_families": 14,
+    "tiles": 1962
+   },
+   "telea": {
+    "mae_mean": 11.6803,
+    "mae_median": 3.2566,
+    "n_families": 14,
+    "tiles": 1962
+   }
+  },
+  "spearman_mae_real_vs_pseudo": 0.9512
+ },
+ "tier": "C0"
+}

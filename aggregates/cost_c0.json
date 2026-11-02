@@ -1,0 +1,37 @@
+{
+ "batch": 1,
+ "clocks_locked": false,
+ "gpu": "rtx3090",
+ "methods": {
+  "edge_repeat": {
+   "p50_ms": 15.86,
+   "p90_ms": 21.61
+  },
+  "lama": {
+   "p50_ms": 88.62,
+   "p90_ms": 101.83
+  },
+  "lama_ft_c0": {
+   "p50_ms": 91.82,
+   "p90_ms": 111.99
+  },
+  "linear_extrapolation": {
+   "p50_ms": 16.23,
+   "p90_ms": 20.92
+  },
+  "ns": {
+   "p50_ms": 21.91,
+   "p90_ms": 41.28
+  },
+  "strip_unet_mix": {
+   "p50_ms": 44.69,
+   "p90_ms": 47.42
+  },
+  "telea": {
+   "p50_ms": 23.95,
+   "p90_ms": 45.33
+  }
+ },
+ "protocol": "bleedbench-v2.1",
+ "tiles": 120
+}

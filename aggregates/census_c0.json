@@ -1,0 +1,243 @@
+{
+ "deployment": {
+  "colour": {
+   "has_cmyk": {
+    "ci95": [
+     0.0341,
+     0.2325
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.1207
+   },
+   "has_icc": {
+    "ci95": [
+     0.0635,
+     0.2424
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.1395
+   },
+   "raster": {
+    "ci95": [
+     0.0524,
+     0.1673
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.0969
+   },
+   "rgb_or_vector": {
+    "ci95": [
+     0.4907,
+     0.7808
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.6429
+   }
+  },
+  "families": 90,
+  "orientation": {
+   "landscape": {
+    "ci95": [
+     0.1082,
+     0.4204
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.2381
+   },
+   "portrait_or_square": {
+    "ci95": [
+     0.5809,
+     0.8972
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.7619
+   }
+  },
+  "pages": 588,
+  "quiet_share": {
+   "ci95": [
+    0.1624,
+    0.4033
+   ],
+   "n": 588,
+   "n_families": 90,
+   "p": 0.2789
+  },
+  "rotation": {
+   "rot0": {
+    "ci95": [
+     0.9831,
+     1.0
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.9932
+   },
+   "rot180": {
+    "ci95": [
+     0.0,
+     0.0059
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.0017
+   },
+   "rot270": {
+    "ci95": [
+     0.0,
+     0.0126
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.0034
+   },
+   "rot90": {
+    "ci95": [
+     0.0,
+     0.0049
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.0017
+   }
+  },
+  "size": {
+   "<=11x17": {
+    "ci95": [
+     0.1403,
+     0.5031
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.301
+   },
+   "<=4x6": {
+    "ci95": [
+     0.0648,
+     0.2703
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.1497
+   },
+   "<=8.5x11": {
+    "ci95": [
+     0.2974,
+     0.7151
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.5102
+   },
+   ">11x17": {
+    "ci95": [
+     0.0158,
+     0.0667
+    ],
+    "n": 588,
+    "n_families": 90,
+    "p": 0.0391
+   }
+  }
+ },
+ "method": {
+  "bootstrap": "family_cluster_percentile",
+  "bootstrap_draws": 2000,
+  "k_anonymity_families": 5,
+  "material": "pdf_bboxlog_topmost_at_trim"
+ },
+ "protocol": "bleedbench-v2.1",
+ "real_gt_non_test": {
+  "depth_q90_hist": {
+   "0-1": 283,
+   ">=30": 245
+  },
+  "edge_class_counts": {
+   "FULL": 245,
+   "NO_INK": 37,
+   "STOP": 246
+  },
+  "families": 22,
+  "material_share_inked": {
+   "flat": {
+    "ci95": [
+     0.0054,
+     0.3696
+    ],
+    "n": 491,
+    "n_families": 21,
+    "p": 0.1711
+   },
+   "gradient": {
+    "ci95": [
+     0.0,
+     0.1081
+    ],
+    "n": 491,
+    "n_families": 21,
+    "p": 0.0224
+   },
+   "image": {
+    "ci95": [
+     0.3365,
+     0.9474
+    ],
+    "n": 491,
+    "n_families": 21,
+    "p": 0.6578
+   },
+   "stroke": {
+    "ci95": [
+     0.0232,
+     0.2975
+    ],
+    "n": 491,
+    "n_families": 21,
+    "p": 0.1487
+   }
+  },
+  "p_full_given_inked": {
+   "ci95": [
+    0.146,
+    0.8884
+   ],
+   "n": 491,
+   "n_families": 21,
+   "p": 0.499
+  },
+  "p_full_given_material": {
+   "flat": {
+    "suppressed": true
+   },
+   "gradient": {
+    "suppressed": true
+   },
+   "image": {
+    "ci95": [
+     0.0911,
+     0.7333
+    ],
+    "n": 323,
+    "n_families": 17,
+    "p": 0.2632
+   },
+   "stroke": {
+    "ci95": [
+     0.5714,
+     1.0
+    ],
+    "n": 73,
+    "n_families": 5,
+    "p": 0.9452
+   }
+  }
+ },
+ "splits_sha256": "1c3fdb9b1d4fdf8449680895cb1eed001d5cc749ed1bdd9592c3c242b036f658",
+ "tier": "C0"
+}
