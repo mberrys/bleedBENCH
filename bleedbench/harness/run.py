@@ -33,15 +33,9 @@ def page_tiles(page_key: str, ins: InputStore, lab: LabelStore, tile: int = 512)
     edges = {e["edge"]: e for e in L["edges"]}
     a = _apron_for_band(B)
     g = Geometry(dpi=meta["dpi"], b=B - a, a=a, tile=tile)
-    masks: dict[int, tuple[np.ndarray, np.ndarray]] = {}
-
-    def masks_for(eds) -> tuple[np.ndarray, np.ndarray]:
-        """V12 is per edge: a tile is scored at the width of its own edge(s), so one edge
-        without bleed (e.g. a spine) does not unscore the whole page."""
-        s = min(min(L["scored_px"][e] for e in eds), B - a)
-        if s not in masks:
-            masks[s] = canvas_masks(W, H, Geometry(dpi=meta["dpi"], b=B - a, a=a, tile=tile, scored=s))
-        return masks[s]
+    # V12 is per edge: each edge (and each arm of a corner) is scored at its own width, so one
+    # edge without bleed (e.g. a spine) does not unscore the rest of the page.
+    unk_c, sc_c = canvas_masks(W, H, g, sides=L["scored_px"])
     corner_edges = {"tl": ("top", "left"), "tr": ("top", "right"), "br": ("bottom", "right"), "bl": ("bottom", "left")}
     for t in place_tiles(page_key, W, H, g):
         if not t.valid:
@@ -51,7 +45,6 @@ def page_tiles(page_key: str, ins: InputStore, lab: LabelStore, tile: int = 512)
         bad = [i for e in eds for i in edges[e]["invalid"]]
         classes = {edges[e]["class"] for e in eds}
         ecls = classes.pop() if len(classes) == 1 else "MIXED"
-        unk_c, sc_c = masks_for(eds)
         yield (t, cut_tile(inp, W, H, g, t), cut_tile(gt, W, H, g, t), cut_tile(unk_c, W, H, g, t),
                cut_tile(sc_c, W, H, g, t), ecls, "+".join(sorted(set(bad))))
 

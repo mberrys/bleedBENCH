@@ -52,17 +52,20 @@ def whole_page_margins(W: int, H: int, B: int) -> dict:
 
 
 # --- masks ------------------------------------------------------------------------------------
-def canvas_masks(W: int, H: int, g: Geometry) -> tuple[np.ndarray, np.ndarray]:
+def canvas_masks(W: int, H: int, g: Geometry, sides: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
     """(unknown, scored) for a page canvas of trim + B on every side.
 
     unknown = everything outside the trim; scored = trim dilated by s (Chebyshev) minus trim,
     i.e. the ring including the corner squares. The apron (outer B - s) is unknown, unscored.
+    sides: optional per-edge scored widths (V12 is per edge); each is capped at g.s. A corner
+    square then spans its two arms' widths (left/right width x top/bottom width).
     """
-    B, s_ = g.B, g.s
+    B = g.B
+    s = {e: g.s if sides is None else max(0, min(sides[e], g.s)) for e in EDGES}
     unk = np.ones((H + 2 * B, W + 2 * B), bool)
     unk[B:B + H, B:B + W] = False
     sc = np.zeros_like(unk)
-    sc[B - s_:B + H + s_, B - s_:B + W + s_] = True
+    sc[B - s["top"]:B + H + s["bottom"], B - s["left"]:B + W + s["right"]] = True
     sc &= unk
     return unk, sc
 

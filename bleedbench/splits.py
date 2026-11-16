@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections import defaultdict
 
 from . import families as F
@@ -108,7 +109,7 @@ def build() -> dict:
     fam_split = {**a_real, **a_other}
     rows = [{"page_key": p["page_key"], "family": p["family"], "split": fam_split[p["family"]],
              "gt_source": p["gt_source"]} for p in pages]
-    blob = json.dumps({"seed": SEED, "pages": rows}, sort_keys=True).encode()
+    blob = json.dumps({"seed": SEED, "families_sha256": _families_sha(), "pages": rows}, sort_keys=True).encode()
     sha = hashlib.sha256(blob).hexdigest()
     (private_dir() / "splits.json").write_bytes(blob)
     summary = defaultdict(lambda: {"pages": 0, "real_pages": 0, "families": set()})
@@ -122,8 +123,23 @@ def build() -> dict:
                        for k, v in sorted(summary.items())}}
 
 
+class StaleSplits(RuntimeError):
+    pass
+
+
+def _families_sha() -> str:
+    return hashlib.sha256((private_dir() / "families.json").read_bytes()).hexdigest()
+
+
 def load() -> dict[str, dict]:
+    """Splits are only valid for the family assignment they were built from: if families.json
+    changed since (e.g. families.run() re-clustered), a family could span two partitions."""
     d = json.loads((private_dir() / "splits.json").read_text())
+    built_on = d.get("families_sha256")
+    if built_on is None:
+        warnings.warn("splits.json predates the families digest; rebuild with splits.build()", stacklevel=2)
+    elif built_on != _families_sha():
+        raise StaleSplits("families.json changed since splits.json was built; run splits.build()")
     return {r["page_key"]: r for r in d["pages"]}
 
 
