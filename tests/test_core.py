@@ -73,11 +73,16 @@ def test_legacy_splits_checked_against_current_families(monkeypatch):
     from bleedbench import splits
     monkeypatch.setattr(splits.LP, "load", lambda: [{"page_key": "a", "sha256": "s1"},
                                                     {"page_key": "b", "sha256": "s2"}])
-    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})
-    with pytest.raises(splits.StaleSplits):          # one current family in two partitions
-        splits._check_legacy_disjoint([{"page_key": "a", "split": "val"}, {"page_key": "b", "split": "test"}])
-    with pytest.warns(UserWarning):                  # still disjoint: accepted with a warning
-        splits._check_legacy_disjoint([{"page_key": "a", "split": "val"}, {"page_key": "b", "split": "val"}])
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})   # a, b now merged
+    with pytest.raises(splits.StaleSplits):          # merged family across two partitions
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_y", "split": "test"}])
+    with pytest.raises(splits.StaleSplits):          # merge within one partition: stale family IDs
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_y", "split": "val"}])
+    with pytest.warns(UserWarning):                  # families unchanged: accepted with a warning
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_x", "split": "val"}])
 
 
 def test_small_page_tiles_invalid():

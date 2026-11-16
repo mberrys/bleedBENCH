@@ -144,18 +144,19 @@ def load() -> dict[str, dict]:
 
 
 def _check_legacy_disjoint(rows: list[dict]) -> None:
-    """A split written before the digest existed is accepted only if it is still family-disjoint
-    under the current families.json (fail closed: an unmapped page also rejects it)."""
+    """A split written before the digest existed is accepted only if every page's stored family
+    is its current family (fail closed). Any re-clustering -- a split across partitions, or a
+    merge/split within one -- would leave stale family IDs in the rows that census and the
+    cluster bootstraps group by, so it requires a rebuild."""
     sha_of = {r["page_key"]: r["sha256"] for r in LP.load()}
     fam = F.load()
-    split_of: dict[str, str] = {}
     for r in rows:
         f = fam.get(sha_of.get(r["page_key"], ""))
         if f is None:
             raise StaleSplits("legacy splits.json: a page has no current family; run splits.build()")
-        if split_of.setdefault(f, r["split"]) != r["split"]:
-            raise StaleSplits("legacy splits.json: a current family spans two partitions; run splits.build()")
-    warnings.warn("splits.json predates the families digest (still family-disjoint); "
+        if f != r["family"]:
+            raise StaleSplits("legacy splits.json: family assignment changed since it was built; run splits.build()")
+    warnings.warn("splits.json predates the families digest (families unchanged); "
                   "rebuild with splits.build() to record it", stacklevel=3)
 
 
