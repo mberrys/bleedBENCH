@@ -5,8 +5,8 @@ import pytest
 from bleedbench import config
 from bleedbench.baselines import classical as C
 from bleedbench.colour import de2000, srgb_to_lab
-from bleedbench.geometry import (Geometry, canvas_masks, cut_all, latent_regen, place_tiles, rot,
-                                 unrot, whole_page_margins)
+from bleedbench.geometry import (Geometry, canvas_masks, cut_all, cut_tile, latent_regen, place_tiles,
+                                 rot, unrot, whole_page_margins)
 from bleedbench.harness.metrics import tile_metrics
 
 
@@ -50,6 +50,34 @@ def test_tiles_one_seam_and_masks():
             assert sc.sum() == g.s * 512
         else:
             assert unk[: g.B].all() and unk[:, : g.B].all() and not unk[g.B:, g.B:].any()
+
+
+def test_canvas_masks_per_edge_widths():
+    """V12 per edge: each arm of the ring (and of a corner) is scored at its own width."""
+    g = Geometry.at(300)
+    B, W, H = g.B, 1200, 1400
+    unk, sc = canvas_masks(W, H, g, sides={"top": 37, "left": 19, "right": 0, "bottom": 99})
+    x, y = B + 100, B + 100                                     # a column / row inside the trim span
+    assert sc[B - 37:B, x].all() and not sc[B - 38, x]          # top arm: 37 rows
+    assert sc[y, B - 19:B].all() and not sc[y, B - 20]          # left arm: 19 cols
+    assert not sc[y, B + W:].any()                              # right: no bleed, unscored
+    assert sc[B + H:B + H + g.s, x].all() and not sc[B + H + g.s, x]   # bottom: capped at s
+    assert sc[B - 37:B, B - 19:B].all()                         # tl corner spans both arms
+    assert not sc[B - 38, B - 19:B].any() and not sc[B - 37:B, B - 20].any()
+    assert not (sc & ~unk).any()
+    tl = cut_tile(sc, W, H, g, next(t for t in place_tiles("c", W, H, g) if t.where == "tl"))
+    assert tl.sum() == 37 * (512 - B) + 19 * (512 - B) + 19 * 37
+
+
+def test_legacy_splits_checked_against_current_families(monkeypatch):
+    from bleedbench import splits
+    monkeypatch.setattr(splits.LP, "load", lambda: [{"page_key": "a", "sha256": "s1"},
+                                                    {"page_key": "b", "sha256": "s2"}])
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})
+    with pytest.raises(splits.StaleSplits):          # one current family in two partitions
+        splits._check_legacy_disjoint([{"page_key": "a", "split": "val"}, {"page_key": "b", "split": "test"}])
+    with pytest.warns(UserWarning):                  # still disjoint: accepted with a warning
+        splits._check_legacy_disjoint([{"page_key": "a", "split": "val"}, {"page_key": "b", "split": "val"}])
 
 
 def test_small_page_tiles_invalid():

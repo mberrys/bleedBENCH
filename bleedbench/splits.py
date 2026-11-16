@@ -137,10 +137,26 @@ def load() -> dict[str, dict]:
     d = json.loads((private_dir() / "splits.json").read_text())
     built_on = d.get("families_sha256")
     if built_on is None:
-        warnings.warn("splits.json predates the families digest; rebuild with splits.build()", stacklevel=2)
+        _check_legacy_disjoint(d["pages"])
     elif built_on != _families_sha():
         raise StaleSplits("families.json changed since splits.json was built; run splits.build()")
     return {r["page_key"]: r for r in d["pages"]}
+
+
+def _check_legacy_disjoint(rows: list[dict]) -> None:
+    """A split written before the digest existed is accepted only if it is still family-disjoint
+    under the current families.json (fail closed: an unmapped page also rejects it)."""
+    sha_of = {r["page_key"]: r["sha256"] for r in LP.load()}
+    fam = F.load()
+    split_of: dict[str, str] = {}
+    for r in rows:
+        f = fam.get(sha_of.get(r["page_key"], ""))
+        if f is None:
+            raise StaleSplits("legacy splits.json: a page has no current family; run splits.build()")
+        if split_of.setdefault(f, r["split"]) != r["split"]:
+            raise StaleSplits("legacy splits.json: a current family spans two partitions; run splits.build()")
+    warnings.warn("splits.json predates the families digest (still family-disjoint); "
+                  "rebuild with splits.build() to record it", stacklevel=3)
 
 
 def sha() -> str:
