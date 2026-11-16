@@ -43,7 +43,10 @@ class InputStore:
         (self.root / f"{_fn(key)}.json").write_text(json.dumps({"W": W, "H": H, "B": B, **meta}))
 
     def get(self, key: str) -> tuple[np.ndarray, dict]:
-        return _load_png(self.root / f"{_fn(key)}.png"), json.loads((self.root / f"{_fn(key)}.json").read_text())
+        return _load_png(self.root / f"{_fn(key)}.png"), self.meta(key)
+
+    def meta(self, key: str) -> dict:
+        return json.loads((self.root / f"{_fn(key)}.json").read_text())
 
     def has(self, key: str) -> bool:
         return (self.root / f"{_fn(key)}.png").exists()

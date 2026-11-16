@@ -51,11 +51,14 @@ def _er_ring_mae(gt, u, s) -> float:
 
 
 def _sample(canvas, W, H, g, rng, bad_edges=(), hard=True):
+    masks = None
     for _ in range(30):
         spec = _random_spec(rng, W, H, g)
         if spec is None or any(e in bad_edges for e in _edges_of(spec)):
             continue
-        unk, sc = canvas_masks(W, H, g)
+        if masks is None:                       # page-sized; build once per call, not per attempt
+            masks = canvas_masks(W, H, g)
+        unk, sc = masks
         gt = cut_tile(canvas, W, H, g, spec)
         u = cut_tile(unk, W, H, g, spec)
         s = cut_tile(sc, W, H, g, spec)
@@ -115,7 +118,7 @@ class PseudoTiles(Dataset):
             if len(self._cache) > 24:
                 self._cache.pop(next(iter(self._cache)))
             gt = LabelStore().gt(k)
-            _, meta = InputStore().get(k)
+            meta = InputStore().meta(k)        # metadata only; the input PNG is not needed
             self._cache[k] = (gt, meta)
         return self._cache[k]
 

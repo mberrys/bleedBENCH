@@ -181,7 +181,7 @@ def run() -> dict:
         for d in ds:
             owners[d].add(s)
     hubs = 0
-    for d, own in owners.items():
+    for d, own in sorted(owners.items()):          # fixed order: hub checks depend on prior links
         if len(own) < 2:
             continue
         if len({dsu.find(o) for o in own}) >= HUB_CLUSTERS:

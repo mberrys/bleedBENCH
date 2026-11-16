@@ -31,10 +31,17 @@ def page_tiles(page_key: str, ins: InputStore, lab: LabelStore, tile: int = 512)
     L = lab.labels(page_key)
     W, H, B = meta["W"], meta["H"], meta["B"]
     edges = {e["edge"]: e for e in L["edges"]}
-    s = min(L["scored_px"].values())
     a = _apron_for_band(B)
-    g = Geometry(dpi=meta["dpi"], b=B - a, a=a, tile=tile, scored=min(s, B - a))
-    unk_c, sc_c = canvas_masks(W, H, g)
+    g = Geometry(dpi=meta["dpi"], b=B - a, a=a, tile=tile)
+    masks: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+
+    def masks_for(eds) -> tuple[np.ndarray, np.ndarray]:
+        """V12 is per edge: a tile is scored at the width of its own edge(s), so one edge
+        without bleed (e.g. a spine) does not unscore the whole page."""
+        s = min(min(L["scored_px"][e] for e in eds), B - a)
+        if s not in masks:
+            masks[s] = canvas_masks(W, H, Geometry(dpi=meta["dpi"], b=B - a, a=a, tile=tile, scored=s))
+        return masks[s]
     corner_edges = {"tl": ("top", "left"), "tr": ("top", "right"), "br": ("bottom", "right"), "bl": ("bottom", "left")}
     for t in place_tiles(page_key, W, H, g):
         if not t.valid:
@@ -44,6 +51,7 @@ def page_tiles(page_key: str, ins: InputStore, lab: LabelStore, tile: int = 512)
         bad = [i for e in eds for i in edges[e]["invalid"]]
         classes = {edges[e]["class"] for e in eds}
         ecls = classes.pop() if len(classes) == 1 else "MIXED"
+        unk_c, sc_c = masks_for(eds)
         yield (t, cut_tile(inp, W, H, g, t), cut_tile(gt, W, H, g, t), cut_tile(unk_c, W, H, g, t),
                cut_tile(sc_c, W, H, g, t), ecls, "+".join(sorted(set(bad))))
 
@@ -64,6 +72,8 @@ def run(run_id: str, page_keys: list[str], methods: dict[str, Method], split_of:
     if path.exists():
         with open(path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
+                if row.get(_FIELDS[-1]) is None:      # torn row from a hard kill: not a page boundary
+                    continue
                 if not done or done[-1] != row["page_id"]:
                     done.append(row["page_id"])
         keep = set(done[:-1])

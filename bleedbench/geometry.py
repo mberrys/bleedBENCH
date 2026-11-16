@@ -100,7 +100,8 @@ def place_tiles(case_id: str, W: int, H: int, g: Geometry, per_edge: int | None 
     for edge in EDGES:
         L = W if edge in ("top", "bottom") else H
         usable = L - g.tile           # keep the tile's lateral extent inside the trim: one seam
-        if usable < 0:
+        depth = H if edge in ("top", "bottom") else W
+        if usable < 0 or depth + g.B < g.tile:     # tile would reach the opposite band (or past it)
             specs += [TileSpec("edge", edge, i, 0, False) for i in range(E)]   # V7
             continue
         spacing = L / E

@@ -159,21 +159,7 @@ def score(raw, inp, unknown, ctx: GTContext, net_raw=None) -> dict:
         m["invented_area"] = 0.0
     if ctx.content_class == "flat" and ctx.edge_class in (None, "FULL"):
         m["solid_drift"] = float(np.abs(diff.mean(0)).max())
-    # --- A6
-    reasons = []
-    rule = A6_RULES.get(ctx.content_class, {})
-    if "mae" in rule and m["mae"] > rule["mae"]:
-        reasons.append(f"{ctx.content_class}_mae")
-    if "de" in rule and m["delta_e"] > rule["de"]:
-        reasons.append(f"{ctx.content_class}_de")
-    if ctx.content_class in C1_CLASSES and m["seam_step"] is not None and m["seam_step"] > C1_FAIL:
-        reasons.append("c1")
-    if ctx.edge_class == "NO_INK" and m.get("stop_blob_px", 0) > 0:
-        reasons.append("no_ink_ink")
-    if m["trim_violations"] > 0:
-        reasons.append("trim")
-    m["abs_fail"] = int(bool(reasons))
-    m["abs_fail_reason"] = "+".join(reasons)
+    m["abs_fail"], m["abs_fail_reason"] = a6(ctx.content_class, ctx.edge_class, m)
     return m
 
 

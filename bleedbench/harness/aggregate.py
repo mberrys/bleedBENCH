@@ -11,7 +11,7 @@ from collections import defaultdict
 import numpy as np
 
 from ..config import private_dir
-from .metrics import a6
+from .metrics import a6, severe
 from . import stats as ST
 
 ORACLE_METHODS = ("edge_repeat", "stretch", "mirror", "telea", "ns", "linear_extrapolation", "lama")
@@ -74,7 +74,7 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
         if r["unit"] in oracle and r["label_bleed_class"] in SCORED_CLASSES:
             o = oracle[r["unit"]][1]
             r["oracle_mae"] = o
-            r["severe"] = int(r["mae"] > 2 * o + 2)
+            r["severe"] = severe(r["mae"], o)
             by_m[r["method"]].append(r)
     methods = methods or sorted(by_m)
     ref_page = _page_fid(by_m[REF])
@@ -93,6 +93,7 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
                      "de_page": round(ST.design_effect(icc_p, m_p), 3),
                      "pages": len(pk), "n_families": len(set(fam_of.values()))}
     de_tile = max(1.0, out["design"]["de_tile"])
+    refm = {r["unit"]: r["mae"] for r in ref}
     for m in methods:
         rs = by_m.get(m, [])
         if not rs:
@@ -100,13 +101,15 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
         maes = np.array([r["mae"] for r in rs])
         fams = np.array([r["family_id"] for r in rs])
         sev = np.array([r["severe"] for r in rs])
+        # CP-DE bound on orientation-0 units only: de_tile is measured on them, and rotations of
+        # a tile are near-copies that would inflate n four-fold (DD74).
+        sev0 = np.array([r["severe"] for r in rs if r["orientation"] == 0])
         af = np.array([r["abs_fail"] or 0 for r in rs])
         page = _page_fid(rs)
         common = sorted(set(page) & set(ref_page))
         gain = np.array([ref_page[p] - page[p] for p in common])
         g = ST.cluster_bootstrap(gain, np.array([fam_of[p] for p in common]))
         # paired tile delta (same unit) vs reference
-        refm = {r["unit"]: r["mae"] for r in by_m[REF]}
         d = [(r["mae"] - refm[r["unit"]], r["family_id"]) for r in rs if r["unit"] in refm]
         dd = ST.cluster_bootstrap(np.array([x for x, _ in d]), np.array([f for _, f in d]))
         stop = _b9(rs)
@@ -118,7 +121,7 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
             "seam_step_mean": _r(np.nanmean([r["seam_step"] for r in rs if r["seam_step"] is not None])),
             "bge_mean": _r(np.nanmean([r["boundary_gradient_error"] for r in rs if r["boundary_gradient_error"] is not None])),
             "severe_rate": _r(sev.mean()),
-            "severe_cp_de_ub95": _r(ST.cp_de_upper(int(sev.sum()), len(sev), de_tile)),
+            "severe_cp_de_ub95": _r(ST.cp_de_upper(int(sev0.sum()), len(sev0), de_tile)),
             "abs_fail_rate": _r(af.mean()),
             "trim_violations_tiles": int(sum(1 for r in rs if (r["trim_violations"] or 0) > 0)),
             "preclamp_changed_tiles": int(sum(1 for r in rs if (r["preclamp_changed"] or 0) > 0)),

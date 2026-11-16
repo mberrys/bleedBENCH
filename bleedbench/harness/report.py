@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from .. import features as FT
 from .. import splits as S
 from ..config import AGGREGATES
 from ..privacy import write_export
 from . import aggregate as AG
 from . import gate as GATE
 from . import stats as ST
+from .metrics import severe
 
 
 def dev_report(run_ids: list[str], gates: dict | None = None, name: str = "dev_c0") -> dict:
@@ -42,8 +44,8 @@ def _o14(rows, oracle7):
     for m in sorted({r["method"] for r in rows}):
         rs = [r for r in rows if r["method"] == m and r["unit"] in oracle7 and r["unit"] in six]
         if rs:
-            out[m] = {"six": round(float(np.mean([r["mae"] > 2 * six[r["unit"]] + 2 for r in rs])), 4),
-                      "seven": round(float(np.mean([r["mae"] > 2 * oracle7[r["unit"]][1] + 2 for r in rs])), 4)}
+            out[m] = {"six": round(float(np.mean([severe(r["mae"], six[r["unit"]]) for r in rs])), 4),
+                      "seven": round(float(np.mean([severe(r["mae"], oracle7[r["unit"]][1]) for r in rs])), 4)}
     return out
 
 
@@ -51,11 +53,13 @@ def _gate(rows, oracle, method, conf_fn, de_tile):
     def part(split):
         rs = [r for r in rows if r["method"] == method and r["split"] == split and r["orientation"] == 0
               and r["unit"] in oracle and r["label_bleed_class"] in AG.SCORED_CLASSES]
-        sev = np.array([int(r["mae"] > 2 * oracle[r["unit"]][1] + 2) for r in rs])
+        sev = np.array([severe(r["mae"], oracle[r["unit"]][1]) for r in rs])
         ref = [r for r in rows if r["method"] == AG.REF and r["split"] == split and r["orientation"] == 0
                and r["unit"] in oracle and r["label_bleed_class"] in AG.SCORED_CLASSES]
-        ref_rate = float(np.mean([r["mae"] > 2 * oracle[r["unit"]][1] + 2 for r in ref])) if ref else 0.0
-        return rs, sev, conf_fn(rs) if rs else np.zeros(0), ref_rate
+        ref_rate = float(np.mean([severe(r["mae"], oracle[r["unit"]][1]) for r in ref])) if ref else 0.0
+        # the gate sees feat_* columns only (DD71): never mae/ssim/abs_fail or ids
+        feats = [{k: r[k] for k in FT.FEATURES} for r in rs]
+        return rs, sev, conf_fn(feats) if rs else np.zeros(0), ref_rate
     s_rows, s_sev, s_conf, s_ref = part("cal_sel")
     c_rows, c_sev, c_conf, c_ref = part("cal_cert")
     res = GATE.calibrate(s_conf, s_sev, c_conf, c_sev, de_tile, s_ref, c_ref)
@@ -85,7 +89,7 @@ def _gate(rows, oracle, method, conf_fn, de_tile):
 def transfer_table(real_runs: list[str], pseudo_runs: list[str]) -> dict:
     """T10 / O15: same methods on real-GT and pseudo pages of the dev families (orientation 0)."""
     real = [r for r in AG.load_rows(real_runs) if r["orientation"] == 0 and r["label_bleed_class"] in AG.SCORED_CLASSES]
-    pseudo = [r for r in AG.load_rows(pseudo_runs) if r["label_bleed_class"] in AG.SCORED_CLASSES]
+    pseudo = [r for r in AG.load_rows(pseudo_runs) if r["orientation"] == 0 and r["label_bleed_class"] in AG.SCORED_CLASSES]
     out = {}
     for name, rs in (("real", real), ("pseudo", pseudo)):
         by = {}

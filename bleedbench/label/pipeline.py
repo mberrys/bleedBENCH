@@ -67,7 +67,7 @@ def _canvas_from_raster(path: str, B: int) -> R.Canvas:
 def _inferred_canvas(path: str, idx: int, B: int) -> tuple[R.Canvas, pymupdf.Rect, pymupdf.Rect]:
     doc = pymupdf.open(path)
     page = R._prepare(doc, idx)
-    mb = page.mediabox
+    mb = page.rect                                  # MediaBox in render space
     tb = pymupdf.Rect(mb.x0 + 9, mb.y0 + 9, mb.x1 - 9, mb.y1 - 9)
     z = 300 / 72
     W, H = round(tb.width * z), round(tb.height * z)
@@ -108,18 +108,17 @@ def label_one(rec: dict, inv: dict, ins: InputStore, lab: LabelStore) -> dict:
         doc = pymupdf.open(path)
         page = R._prepare(doc, rec["page_index"])
         z = cv.dpi / 72
+        mb = page.rect                              # all rects in render/display-list space
         if src == "real_bleedbox":
-            trim, bleed = page.trimbox, page.bleedbox
+            trim, bleed = R.render_rect(page, page.trimbox), R.render_rect(page, page.bleedbox)
         elif src == "inferred_trim":
-            mb = page.mediabox
-            trim, bleed = pymupdf.Rect(mb.x0 + 9, mb.y0 + 9, mb.x1 - 9, mb.y1 - 9), page.mediabox
+            trim, bleed = pymupdf.Rect(mb.x0 + 9, mb.y0 + 9, mb.x1 - 9, mb.y1 - 9), mb
         else:
-            mb = page.mediabox
             trim = pymupdf.Rect(mb.x0 + B / z, mb.y0 + B / z, mb.x1 - B / z, mb.y1 - B / z)
             bleed = mb
         mats = V.edge_material(page, trim, bleed, cv.dpi)
         marks = V.cropmarks_in_ring(page, trim, max(cv.scored_px.values()) / z)
-        texts = V.text_near_edge(page, page.mediabox, B / z) if src == "pseudo" else {e: 0 for e in EDGES}
+        texts = V.text_near_edge(page, mb, B / z) if src == "pseudo" else {e: 0 for e in EDGES}
         doc.close()
     else:
         mats = {e: {"material": "raster", "mix": {}, "clipped_frac": 0.0} for e in EDGES}
