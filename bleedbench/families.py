@@ -181,7 +181,7 @@ def run() -> dict:
         for d in ds:
             owners[d].add(s)
     hubs = 0
-    for d, own in owners.items():
+    for d, own in sorted(owners.items()):          # fixed order: hub checks depend on prior links
         if len(own) < 2:
             continue
         if len({dsu.find(o) for o in own}) >= HUB_CLUSTERS:
@@ -198,7 +198,7 @@ def run() -> dict:
         fid = hid("family", min(members))
         for m in members:
             fam[m] = fid
-    (private_dir() / "families.json").write_text(json.dumps(fam, indent=0))
+    (private_dir() / "families.json").write_text(json.dumps(fam, indent=0, sort_keys=True))
     with open(private_dir("review") / "family_graph.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["family_id", "signal", "file_a", "file_b"])

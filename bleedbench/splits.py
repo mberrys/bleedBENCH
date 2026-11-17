@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections import defaultdict
 
 from . import families as F
@@ -108,7 +109,7 @@ def build() -> dict:
     fam_split = {**a_real, **a_other}
     rows = [{"page_key": p["page_key"], "family": p["family"], "split": fam_split[p["family"]],
              "gt_source": p["gt_source"]} for p in pages]
-    blob = json.dumps({"seed": SEED, "pages": rows}, sort_keys=True).encode()
+    blob = json.dumps({"seed": SEED, "families_sha256": _families_sha(), "pages": rows}, sort_keys=True).encode()
     sha = hashlib.sha256(blob).hexdigest()
     (private_dir() / "splits.json").write_bytes(blob)
     summary = defaultdict(lambda: {"pages": 0, "real_pages": 0, "families": set()})
@@ -122,9 +123,53 @@ def build() -> dict:
                        for k, v in sorted(summary.items())}}
 
 
+class StaleSplits(RuntimeError):
+    pass
+
+
+def _families_sha() -> str:
+    """Digest of the family *assignment*: a format-only rewrite of families.json must not
+    invalidate splits, so the canonical (sorted-keys) JSON form is hashed, not the raw bytes."""
+    try:
+        fam = F.load()
+    except FileNotFoundError as e:
+        raise StaleSplits("families.json is missing; run families.run() before "
+                          "splits.build() or splits.load()") from e
+    return hashlib.sha256(json.dumps(fam, sort_keys=True).encode()).hexdigest()
+
+
 def load() -> dict[str, dict]:
+    """Splits are only valid for the family assignment they were built from: if families.json
+    changed since (e.g. families.run() re-clustered), a family could span two partitions."""
     d = json.loads((private_dir() / "splits.json").read_text())
+    built_on = d.get("families_sha256")
+    if built_on is None:
+        _check_legacy_disjoint(d["pages"])
+    elif built_on != _families_sha():
+        raise StaleSplits("families.json changed since splits.json was built; run splits.build()")
     return {r["page_key"]: r for r in d["pages"]}
+
+
+def _check_legacy_disjoint(rows: list[dict]) -> None:
+    """A split written before the digest existed is accepted only if every page's stored family
+    is its current family, and no family spans two partitions (fail closed). Any re-clustering
+    -- a split across partitions, or a merge/split within one -- would leave stale family IDs in
+    the rows that census and the cluster bootstraps group by, so it requires a rebuild."""
+    sha_of = {r["page_key"]: r["sha256"] for r in LP.load()}
+    fam = F.load()
+    seen: dict[str, set[str]] = defaultdict(set)
+    for r in rows:
+        f = fam.get(sha_of.get(r["page_key"], ""))
+        if f is None:
+            raise StaleSplits("legacy splits.json: a page has no current family; run splits.build()")
+        if f != r["family"]:
+            raise StaleSplits("legacy splits.json: family assignment changed since it was built; run splits.build()")
+        seen[f].add(r["split"])
+    for f, sp in sorted(seen.items()):          # a family must sit in exactly one partition
+        if len(sp) > 1:
+            raise StaleSplits(f"legacy splits.json: family {f} spans splits {sorted(sp)}; run splits.build()")
+    warnings.warn("splits.json predates the families digest (families unchanged); "
+                  "rebuild with splits.build() to record it", stacklevel=3)
 
 
 def sha() -> str:

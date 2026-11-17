@@ -11,7 +11,7 @@ from collections import defaultdict
 import numpy as np
 
 from ..config import private_dir
-from .metrics import a6
+from .metrics import a6, severe
 from . import stats as ST
 
 ORACLE_METHODS = ("edge_repeat", "stretch", "mirror", "telea", "ns", "linear_extrapolation", "lama")
@@ -19,6 +19,17 @@ REF = "edge_repeat"
 # v2.1 DD84: STOP (art ends exactly at the trim) is missing bleed; its GT ring (paper) is not the
 # desired output, so it has no fidelity GT. Scored classes: FULL (fidelity) and NO_INK (restraint).
 SCORED_CLASSES = ("FULL", "NO_INK")
+
+
+def certification_rows(rows: list[dict]) -> list[dict]:
+    """Rows on the certification basis (DD74): orientation 0 and a scored bleed class.
+
+    Every severe bound and gate statistic uses this basis. Keeping the predicate here stops
+    each caller from re-deriving it with a slightly different filter.
+    """
+    return [r for r in rows if r["orientation"] == 0 and r["label_bleed_class"] in SCORED_CLASSES]
+
+
 NUM = ("mae", "delta_e", "ssim", "seam_step", "seam_dE", "boundary_gradient_error", "clamp_seam_dE",
        "preclamp_changed", "preclamp_changed_max", "trim_violations", "stop_false_ink", "stop_blob_px",
        "stop_accept", "invented_area", "solid_drift", "abs_fail", "runtime_ms")
@@ -74,14 +85,14 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
         if r["unit"] in oracle and r["label_bleed_class"] in SCORED_CLASSES:
             o = oracle[r["unit"]][1]
             r["oracle_mae"] = o
-            r["severe"] = int(r["mae"] > 2 * o + 2)
+            r["severe"] = severe(r["mae"], o)
             by_m[r["method"]].append(r)
     methods = methods or sorted(by_m)
     ref_page = _page_fid(by_m[REF])
     out = {"oracle_methods": list(ORACLE_METHODS), "methods": {}}
     # design effects from the reference method (tile in page; page in family)
     ref = by_m[REF]
-    o0 = [r for r in ref if r["orientation"] == 0]       # certification unit (DD74)
+    o0 = certification_rows(ref)                      # certification unit (DD74)
     icc_t, m_t = ST.icc_oneway(np.array([r["mae"] for r in o0]), np.array([r["page_id"] for r in o0]))
     pf = ref_page
     fam_of = {r["page_id"]: r["family_id"] for r in ref}
@@ -93,6 +104,7 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
                      "de_page": round(ST.design_effect(icc_p, m_p), 3),
                      "pages": len(pk), "n_families": len(set(fam_of.values()))}
     de_tile = max(1.0, out["design"]["de_tile"])
+    refm = {r["unit"]: r["mae"] for r in ref}
     for m in methods:
         rs = by_m.get(m, [])
         if not rs:
@@ -100,13 +112,15 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
         maes = np.array([r["mae"] for r in rs])
         fams = np.array([r["family_id"] for r in rs])
         sev = np.array([r["severe"] for r in rs])
+        # CP-DE bound on orientation-0 units only: de_tile is measured on them, and rotations of
+        # a tile are near-copies that would inflate n four-fold (DD74).
+        sev0 = np.array([r["severe"] for r in certification_rows(rs)])
         af = np.array([r["abs_fail"] or 0 for r in rs])
         page = _page_fid(rs)
         common = sorted(set(page) & set(ref_page))
         gain = np.array([ref_page[p] - page[p] for p in common])
         g = ST.cluster_bootstrap(gain, np.array([fam_of[p] for p in common]))
         # paired tile delta (same unit) vs reference
-        refm = {r["unit"]: r["mae"] for r in by_m[REF]}
         d = [(r["mae"] - refm[r["unit"]], r["family_id"]) for r in rs if r["unit"] in refm]
         dd = ST.cluster_bootstrap(np.array([x for x, _ in d]), np.array([f for _, f in d]))
         stop = _b9(rs)
@@ -118,7 +132,10 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
             "seam_step_mean": _r(np.nanmean([r["seam_step"] for r in rs if r["seam_step"] is not None])),
             "bge_mean": _r(np.nanmean([r["boundary_gradient_error"] for r in rs if r["boundary_gradient_error"] is not None])),
             "severe_rate": _r(sev.mean()),
-            "severe_cp_de_ub95": _r(ST.cp_de_upper(int(sev.sum()), len(sev), de_tile)),
+            # the CP-DE bound is an orientation-0 quantity (DD74), so publish its inputs next to it
+            "tiles_o0": int(len(sev0)), "severe_o0": int(sev0.sum()),
+            "severe_rate_o0": _r(sev0.mean()) if len(sev0) else 0.0,
+            "severe_cp_de_ub95": _r(ST.cp_de_upper(int(sev0.sum()), len(sev0), de_tile)),
             "abs_fail_rate": _r(af.mean()),
             "trim_violations_tiles": int(sum(1 for r in rs if (r["trim_violations"] or 0) > 0)),
             "preclamp_changed_tiles": int(sum(1 for r in rs if (r["preclamp_changed"] or 0) > 0)),

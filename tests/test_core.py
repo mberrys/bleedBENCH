@@ -5,8 +5,8 @@ import pytest
 from bleedbench import config
 from bleedbench.baselines import classical as C
 from bleedbench.colour import de2000, srgb_to_lab
-from bleedbench.geometry import (Geometry, canvas_masks, cut_all, latent_regen, place_tiles, rot,
-                                 unrot, whole_page_margins)
+from bleedbench.geometry import (EDGES, Geometry, canvas_masks, cut_all, cut_tile, latent_regen, place_tiles,
+                                 rot, unrot, whole_page_margins)
 from bleedbench.harness.metrics import tile_metrics
 
 
@@ -52,10 +52,153 @@ def test_tiles_one_seam_and_masks():
             assert unk[: g.B].all() and unk[:, : g.B].all() and not unk[g.B:, g.B:].any()
 
 
+def test_canvas_masks_per_edge_widths():
+    """V12 per edge: each arm of the ring (and of a corner) is scored at its own width."""
+    g = Geometry.at(300)
+    B, W, H = g.B, 1200, 1400
+    unk, sc = canvas_masks(W, H, g, sides={"top": 37, "left": 19, "right": 0, "bottom": 99})
+    x, y = B + 100, B + 100                                     # a column / row inside the trim span
+    assert sc[B - 37:B, x].all() and not sc[B - 38, x]          # top arm: 37 rows
+    assert sc[y, B - 19:B].all() and not sc[y, B - 20]          # left arm: 19 cols
+    assert not sc[y, B + W:].any()                              # right: no bleed, unscored
+    assert sc[B + H:B + H + g.s, x].all() and not sc[B + H + g.s, x]   # bottom: capped at s
+    assert sc[B - 37:B, B - 19:B].all()                         # tl corner spans both arms
+    assert not sc[B - 38, B - 19:B].any() and not sc[B - 37:B, B - 20].any()
+    assert not (sc & ~unk).any()
+    tl = cut_tile(sc, W, H, g, next(t for t in place_tiles("c", W, H, g) if t.where == "tl"))
+    assert tl.sum() == 37 * (512 - B) + 19 * (512 - B) + 19 * 37
+
+
+def test_legacy_splits_checked_against_current_families(monkeypatch):
+    from bleedbench import splits
+    monkeypatch.setattr(splits.LP, "load", lambda: [{"page_key": "a", "sha256": "s1"},
+                                                    {"page_key": "b", "sha256": "s2"}])
+    # stale family IDs: a merge within one partition left rows that no longer match the census
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_z"})
+    with pytest.raises(splits.StaleSplits, match="family assignment changed"):
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_y", "split": "val"}])
+    # current family IDs, but one family sits in two partitions
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})
+    with pytest.raises(splits.StaleSplits, match="spans splits"):
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_x", "split": "test"}])
+    # a page whose sha256 has no current family at all
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x"})
+    with pytest.raises(splits.StaleSplits, match="no current family"):
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_y", "split": "val"}])
+    # families unchanged, each family in one partition: accepted with a warning
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})
+    with pytest.warns(UserWarning):
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_x", "split": "val"}])
+
+
+def test_splits_load_digest_tamper_and_legacy(tmp_path, monkeypatch):
+    """load()'s three branches: digest present (and matching / tampered), and a legacy file."""
+    import hashlib
+    import json
+    from bleedbench import families as FAM, splits
+    monkeypatch.setattr(splits, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    monkeypatch.setattr(FAM, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    fam = {"s1": "fam_x", "s2": "fam_y"}
+    (tmp_path / "families.json").write_text(json.dumps(fam, indent=0))
+    rows = [{"page_key": "a", "family": "fam_x", "split": "val"},
+            {"page_key": "b", "family": "fam_y", "split": "test"}]
+    canon = hashlib.sha256(json.dumps(fam, sort_keys=True).encode()).hexdigest()
+
+    def write_splits(digest=None):
+        d = {"seed": "s", "pages": rows}
+        if digest is not None:
+            d["families_sha256"] = digest
+        (tmp_path / "splits.json").write_text(json.dumps(d))
+
+    write_splits(canon)                                # matching digest: accepted
+    assert splits.load() == {"a": rows[0], "b": rows[1]}
+    raw = (tmp_path / "families.json").read_bytes()
+    # format-only rewrite: re-indented *and* key-reordered, same assignment
+    (tmp_path / "families.json").write_text(json.dumps({"s2": fam["s2"], "s1": fam["s1"]}, indent=4))
+    assert (tmp_path / "families.json").read_bytes() != raw
+    assert splits._families_sha() == canon and len(splits.load()) == 2   # same assignment, same digest
+    (tmp_path / "families.json").write_text(json.dumps({"s1": "fam_z", "s2": "fam_y"}, indent=0))
+    with pytest.raises(splits.StaleSplits, match="families.json changed"):   # tampered families
+        splits.load()
+    # legacy file (no digest): checked against the current families, then accepted
+    (tmp_path / "families.json").write_text(json.dumps({"s1": "fam_x", "s2": "fam_x"}, indent=0))
+    monkeypatch.setattr(splits.LP, "load", lambda: [{"page_key": "a", "sha256": "s1"},
+                                                    {"page_key": "b", "sha256": "s2"}])
+    legacy = [{"page_key": "a", "family": "fam_x", "split": "val"},
+              {"page_key": "b", "family": "fam_x", "split": "val"}]
+    (tmp_path / "splits.json").write_text(json.dumps({"seed": "s", "pages": legacy}))
+    with pytest.warns(UserWarning):
+        got = splits.load()
+    assert set(got) == {"a", "b"} and got["b"] == legacy[1]
+    # families.json gone with a digest present: StaleSplits, not a bare FileNotFoundError
+    write_splits(canon)
+    (tmp_path / "families.json").unlink()
+    with pytest.raises(splits.StaleSplits, match="families.json is missing"):
+        splits.load()
+
+
+def test_splits_build_records_a_stable_digest(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    from bleedbench import families as FAM, splits
+    monkeypatch.setattr(splits, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    monkeypatch.setattr(FAM, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    fam = {"s1": "fam_a", "s2": "fam_b"}
+    (tmp_path / "families.json").write_text(json.dumps(fam, indent=0))
+    monkeypatch.setattr(splits, "usable_pages", lambda: [
+        {"page_key": "a", "sha256": "s1", "family": "fam_a", "gt_source": "real_bleedbox",
+         "stop": 2, "full": 1},
+        {"page_key": "b", "sha256": "s2", "family": "fam_b", "gt_source": "pseudo",
+         "stop": 1, "full": 0}])
+    first, second = splits.build(), splits.build()
+    assert first["sha256"] == second["sha256"]         # two consecutive builds agree
+    canon = hashlib.sha256(json.dumps(fam, sort_keys=True).encode()).hexdigest()
+    assert json.loads((tmp_path / "splits.json").read_text())["families_sha256"] == canon
+
+
 def test_small_page_tiles_invalid():
     g = Geometry.at(300)
     specs = place_tiles("tiny", 300, 300, g)
     assert not any(t.valid for t in specs)
+
+
+def test_small_page_depth_guard_isolates_top_and_bottom():
+    """600x460: top/bottom clear the lateral check (usable = 88 >= 0) and are rejected only by
+    the depth guard (460 + 48 < 512); five pixels deeper they become placeable again."""
+    g = Geometry.at(300)
+    assert 600 - g.tile == 88 >= 0 and 460 + g.B < g.tile
+    assert not any(t.valid for t in place_tiles("c", 600, 460, g))
+    assert any(t.valid for t in place_tiles("c", 600, 465, g))   # only the depth clause can reject
+
+
+def test_training_specs_use_the_harness_depth_guard():
+    """_random_spec rejects the same shallow edges as place_tiles. On 1000x460 top/bottom pass the
+    length check (1000 >= 512) and fail only the depth guard (460 + 48 < 512); 5 px deeper they pass."""
+    pytest.importorskip("torch")
+    from bleedbench.train.data import _random_spec
+    g, rng = Geometry.at(300), np.random.default_rng(0)
+    assert all(_random_spec(rng, 1000, 460, g) is None for _ in range(400))
+    assert not any(t.valid for t in place_tiles("c", 1000, 460, g))
+    deep = [s for s in (_random_spec(rng, 1000, 465, g) for _ in range(400)) if s and s.kind == "edge"]
+    assert deep and all(s.where in ("top", "bottom") for s in deep)   # left/right: 465 < 512 long
+
+
+def test_scored_ring_wider_than_band_is_clamped_at_construction():
+    """b=38, a=0 -> B=38. A 60 px request is clamped to b so `g.s` stays the effective width;
+    neither the uniform nor the per-edge mask can then start a slice before the canvas."""
+    with pytest.warns(UserWarning, match="scored"):
+        g = Geometry(b=38, a=0, scored=60)
+    W, H = 600, 400
+    unk, sc = canvas_masks(W, H, g)
+    assert g.s == g.b == 38                             # g.s reports the effective width
+    assert (sc == unk).all()                           # the whole band is scored
+    assert sc[: g.B].all() and not sc[g.B:g.B + H, g.B:g.B + W].any()
+    _, sc_sides = canvas_masks(W, H, g, sides={e: 60 for e in EDGES})
+    assert (sc_sides == unk).all()                     # per-edge widths are clamped too
 
 
 def test_rotation_roundtrip_and_latent():

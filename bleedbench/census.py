@@ -22,6 +22,7 @@ from .ingest import probe
 from .label import edges as E
 from .label import pipeline as LP
 from .privacy import K_ANON_FAMILIES, write_export
+from .seeds import derive
 from .store import LabelStore
 
 N_BOOT = 2000
@@ -97,7 +98,7 @@ def build() -> dict:
     dep = {"pages": len(pages), "families": len({split[k]["family"] for k in pages}),
            "quiet_share": _boot_prop(quiet_num, quiet_den)}
     for name, b in (("size", size_b), ("colour", cs_b), ("rotation", rot_b), ("orientation", orient_b)):
-        dep[name] = {key: _boot_prop(cnt, quiet_den, seed=hash(key) % 1000) for key, cnt in sorted(b.items())}
+        dep[name] = {key: _boot_prop(cnt, quiet_den, seed=derive("census", name, key) % 1000) for key, cnt in sorted(b.items())}
 
     # ---------------- real-GT, non-test families ----------------
     cls_num = collections.defaultdict(collections.Counter)

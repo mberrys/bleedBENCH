@@ -16,16 +16,21 @@ from .. import features as FT
 from ..config import private_dir
 from ..harness import gate as GATE
 from ..harness.aggregate import ORACLE_METHODS
+from ..harness.metrics import severe
 
 
 def severe_labels(rows: list[dict], method: str) -> tuple[list[dict], np.ndarray]:
     """rows: all methods on the same units. Returns (method rows, severe array)."""
     best: dict = {}
+    have: dict = {}
     for r in rows:
         if r["method"] in ORACLE_METHODS:
             best[r["unit"]] = min(best.get(r["unit"], 1e9), r["mae"])
+            have.setdefault(r["unit"], set()).add(r["method"])
+    # same definition as the frozen oracle: only units where all 7 methods ran
+    best = {u: v for u, v in best.items() if have[u] == set(ORACLE_METHODS)}
     mine = [r for r in rows if r["method"] == method and r["unit"] in best]
-    sev = np.array([int(r["mae"] > 2 * best[r["unit"]] + 2) for r in mine])
+    sev = np.array([severe(r["mae"], best[r["unit"]]) for r in mine])
     return mine, sev
 
 

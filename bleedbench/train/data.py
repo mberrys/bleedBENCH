@@ -28,7 +28,8 @@ def _random_spec(rng, W, H, g) -> TileSpec | None:
         return TileSpec("corner", ["tl", "tr", "br", "bl"][rng.integers(4)], 0, 0)
     edge = ["top", "right", "bottom", "left"][rng.integers(4)]
     L = W if edge in ("top", "bottom") else H
-    if L < TILE:
+    depth = H if edge in ("top", "bottom") else W
+    if L < TILE or depth + g.B < TILE:   # same rule as place_tiles: never reach the opposite band
         return None
     return TileSpec("edge", edge, 0, g.B + int(rng.integers(0, L - TILE + 1)))
 
@@ -50,12 +51,12 @@ def _er_ring_mae(gt, u, s) -> float:
     return float(np.abs(edge_repeat(inp, u)[s].astype(np.int16) - gt[s]).mean())
 
 
-def _sample(canvas, W, H, g, rng, bad_edges=(), hard=True):
+def _sample(canvas, W, H, g, rng, bad_edges=(), hard=True, sides=None):
+    unk, sc = canvas_masks(W, H, g, sides=sides)   # page-sized; build once per call
     for _ in range(30):
         spec = _random_spec(rng, W, H, g)
         if spec is None or any(e in bad_edges for e in _edges_of(spec)):
             continue
-        unk, sc = canvas_masks(W, H, g)
         gt = cut_tile(canvas, W, H, g, spec)
         u = cut_tile(unk, W, H, g, spec)
         s = cut_tile(sc, W, H, g, spec)
@@ -103,7 +104,7 @@ class PseudoTiles(Dataset):
         for k in page_keys:
             L = lab.labels(k)
             bad = tuple(e["edge"] for e in L["edges"] if e["invalid"])
-            self.pages.append((k, bad))
+            self.pages.append((k, bad, L["scored_px"]))   # V12: per-edge scored widths
         self.n, self.seed = n, seed
         self._cache: dict = {}
 
@@ -115,7 +116,7 @@ class PseudoTiles(Dataset):
             if len(self._cache) > 24:
                 self._cache.pop(next(iter(self._cache)))
             gt = LabelStore().gt(k)
-            _, meta = InputStore().get(k)
+            meta = InputStore().meta(k)        # metadata only; the input PNG is not needed
             self._cache[k] = (gt, meta)
         return self._cache[k]
 
@@ -126,11 +127,11 @@ class PseudoTiles(Dataset):
         perm = np.random.default_rng(self.seed).permutation(len(self.pages))
         first = perm[(i // 64) % len(self.pages)]
         for attempt in range(20):
-            k, bad = self.pages[first if attempt == 0 else int(rng.integers(len(self.pages)))]
+            k, bad, sides = self.pages[first if attempt == 0 else int(rng.integers(len(self.pages)))]
             gt, meta = self._page(k)
             if meta["B"] != 48:
                 continue
-            s = _sample(gt, meta["W"], meta["H"], Geometry.at(300), rng, bad, hard=self.hard)
+            s = _sample(gt, meta["W"], meta["H"], Geometry.at(300), rng, bad, hard=self.hard, sides=sides)
             if s is not None:
                 return to_tensor(*s)
         raise RuntimeError("no valid pseudo tile found")
