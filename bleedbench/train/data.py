@@ -28,7 +28,8 @@ def _random_spec(rng, W, H, g) -> TileSpec | None:
         return TileSpec("corner", ["tl", "tr", "br", "bl"][rng.integers(4)], 0, 0)
     edge = ["top", "right", "bottom", "left"][rng.integers(4)]
     L = W if edge in ("top", "bottom") else H
-    if L < TILE:
+    depth = H if edge in ("top", "bottom") else W
+    if L < TILE or depth + g.B < TILE:   # same rule as place_tiles: never reach the opposite band
         return None
     return TileSpec("edge", edge, 0, g.B + int(rng.integers(0, L - TILE + 1)))
 

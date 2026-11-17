@@ -175,6 +175,18 @@ def test_small_page_depth_guard_isolates_top_and_bottom():
     assert any(t.valid for t in place_tiles("c", 600, 465, g))   # only the depth clause can reject
 
 
+def test_training_specs_use_the_harness_depth_guard():
+    """_random_spec rejects the same shallow edges as place_tiles. On 1000x460 top/bottom pass the
+    length check (1000 >= 512) and fail only the depth guard (460 + 48 < 512); 5 px deeper they pass."""
+    pytest.importorskip("torch")
+    from bleedbench.train.data import _random_spec
+    g, rng = Geometry.at(300), np.random.default_rng(0)
+    assert all(_random_spec(rng, 1000, 460, g) is None for _ in range(400))
+    assert not any(t.valid for t in place_tiles("c", 1000, 460, g))
+    deep = [s for s in (_random_spec(rng, 1000, 465, g) for _ in range(400)) if s and s.kind == "edge"]
+    assert deep and all(s.where in ("top", "bottom") for s in deep)   # left/right: 465 < 512 long
+
+
 def test_scored_ring_wider_than_band_is_clamped_at_construction():
     """b=38, a=0 -> B=38. A 60 px request is clamped to b so `g.s` stays the effective width;
     neither the uniform nor the per-edge mask can then start a slice before the canvas."""
