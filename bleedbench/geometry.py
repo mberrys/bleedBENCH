@@ -5,6 +5,7 @@ Base canonical tile: unknown band on top (edge) or top-left L (corner).
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -32,6 +33,13 @@ class Geometry:
     def s(self) -> int:
         return self.b if self.scored is None else self.scored
 
+    def __post_init__(self) -> None:
+        # A scored ring wider than the band is a misconfiguration; it is not fatal (canvas_masks
+        # clamps every width to B), so warn instead of refusing the geometry.
+        if self.scored is not None and self.scored > self.b:
+            warnings.warn(f"Geometry.scored {self.scored} exceeds the ring b={self.b}; "
+                          "the scored ring is clamped to B", stacklevel=2)
+
     @classmethod
     def at(cls, dpi: int = 300, bleed_in: float = 0.125, tile: int = 512, scored: int | None = None,
            legacy_v1: bool = False) -> "Geometry":
@@ -57,11 +65,13 @@ def canvas_masks(W: int, H: int, g: Geometry, sides: dict | None = None) -> tupl
 
     unknown = everything outside the trim; scored = trim dilated by s (Chebyshev) minus trim,
     i.e. the ring including the corner squares. The apron (outer B - s) is unknown, unscored.
-    sides: optional per-edge scored widths (V12 is per edge); each is capped at g.s. A corner
-    square then spans its two arms' widths (left/right width x top/bottom width).
+    sides: optional per-edge scored widths (V12 is per edge); each is capped at min(g.s, g.B).
+    A corner square then spans its two arms' widths (left/right width x top/bottom width).
     """
     B = g.B
-    s = {e: g.s if sides is None else max(0, min(sides[e], g.s)) for e in EDGES}
+    # a width wider than the band would start the slice before the canvas, which numpy wraps to
+    # the opposite edge, so every width is capped at g.B as well as at g.s.
+    s = {e: min(g.s, B) if sides is None else max(0, min(sides[e], g.s, B)) for e in EDGES}
     unk = np.ones((H + 2 * B, W + 2 * B), bool)
     unk[B:B + H, B:B + W] = False
     sc = np.zeros_like(unk)

@@ -121,6 +121,9 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
             "seam_step_mean": _r(np.nanmean([r["seam_step"] for r in rs if r["seam_step"] is not None])),
             "bge_mean": _r(np.nanmean([r["boundary_gradient_error"] for r in rs if r["boundary_gradient_error"] is not None])),
             "severe_rate": _r(sev.mean()),
+            # the CP-DE bound is an orientation-0 quantity (DD74), so publish its inputs next to it
+            "tiles_o0": int(len(sev0)), "severe_o0": int(sev0.sum()),
+            "severe_rate_o0": _r(sev0.mean()) if len(sev0) else 0.0,
             "severe_cp_de_ub95": _r(ST.cp_de_upper(int(sev0.sum()), len(sev0), de_tile)),
             "abs_fail_rate": _r(af.mean()),
             "trim_violations_tiles": int(sum(1 for r in rs if (r["trim_violations"] or 0) > 0)),

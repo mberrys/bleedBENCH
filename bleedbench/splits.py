@@ -128,7 +128,14 @@ class StaleSplits(RuntimeError):
 
 
 def _families_sha() -> str:
-    return hashlib.sha256((private_dir() / "families.json").read_bytes()).hexdigest()
+    """Digest of the family *assignment*: a format-only rewrite of families.json must not
+    invalidate splits, so the canonical (sorted-keys) JSON form is hashed, not the raw bytes."""
+    try:
+        fam = F.load()
+    except FileNotFoundError as e:
+        raise StaleSplits("families.json is missing; run families.run() before "
+                          "splits.build() or splits.load()") from e
+    return hashlib.sha256(json.dumps(fam, sort_keys=True).encode()).hexdigest()
 
 
 def load() -> dict[str, dict]:
@@ -145,17 +152,22 @@ def load() -> dict[str, dict]:
 
 def _check_legacy_disjoint(rows: list[dict]) -> None:
     """A split written before the digest existed is accepted only if every page's stored family
-    is its current family (fail closed). Any re-clustering -- a split across partitions, or a
-    merge/split within one -- would leave stale family IDs in the rows that census and the
-    cluster bootstraps group by, so it requires a rebuild."""
+    is its current family, and no family spans two partitions (fail closed). Any re-clustering
+    -- a split across partitions, or a merge/split within one -- would leave stale family IDs in
+    the rows that census and the cluster bootstraps group by, so it requires a rebuild."""
     sha_of = {r["page_key"]: r["sha256"] for r in LP.load()}
     fam = F.load()
+    seen: dict[str, set[str]] = defaultdict(set)
     for r in rows:
         f = fam.get(sha_of.get(r["page_key"], ""))
         if f is None:
             raise StaleSplits("legacy splits.json: a page has no current family; run splits.build()")
         if f != r["family"]:
             raise StaleSplits("legacy splits.json: family assignment changed since it was built; run splits.build()")
+        seen[f].add(r["split"])
+    for f, sp in sorted(seen.items()):          # a family must sit in exactly one partition
+        if len(sp) > 1:
+            raise StaleSplits(f"legacy splits.json: family {f} spans splits {sorted(sp)}; run splits.build()")
     warnings.warn("splits.json predates the families digest (families unchanged); "
                   "rebuild with splits.build() to record it", stacklevel=3)
 

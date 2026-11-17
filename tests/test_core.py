@@ -5,7 +5,7 @@ import pytest
 from bleedbench import config
 from bleedbench.baselines import classical as C
 from bleedbench.colour import de2000, srgb_to_lab
-from bleedbench.geometry import (Geometry, canvas_masks, cut_all, cut_tile, latent_regen, place_tiles,
+from bleedbench.geometry import (EDGES, Geometry, canvas_masks, cut_all, cut_tile, latent_regen, place_tiles,
                                  rot, unrot, whole_page_margins)
 from bleedbench.harness.metrics import tile_metrics
 
@@ -73,22 +73,120 @@ def test_legacy_splits_checked_against_current_families(monkeypatch):
     from bleedbench import splits
     monkeypatch.setattr(splits.LP, "load", lambda: [{"page_key": "a", "sha256": "s1"},
                                                     {"page_key": "b", "sha256": "s2"}])
-    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})   # a, b now merged
-    with pytest.raises(splits.StaleSplits):          # merged family across two partitions
-        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
-                                       {"page_key": "b", "family": "fam_y", "split": "test"}])
-    with pytest.raises(splits.StaleSplits):          # merge within one partition: stale family IDs
+    # stale family IDs: a merge within one partition left rows that no longer match the census
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_z"})
+    with pytest.raises(splits.StaleSplits, match="family assignment changed"):
         splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
                                        {"page_key": "b", "family": "fam_y", "split": "val"}])
-    with pytest.warns(UserWarning):                  # families unchanged: accepted with a warning
+    # current family IDs, but one family sits in two partitions
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})
+    with pytest.raises(splits.StaleSplits, match="spans splits"):
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_x", "split": "test"}])
+    # a page whose sha256 has no current family at all
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x"})
+    with pytest.raises(splits.StaleSplits, match="no current family"):
+        splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
+                                       {"page_key": "b", "family": "fam_y", "split": "val"}])
+    # families unchanged, each family in one partition: accepted with a warning
+    monkeypatch.setattr(splits.F, "load", lambda: {"s1": "fam_x", "s2": "fam_x"})
+    with pytest.warns(UserWarning):
         splits._check_legacy_disjoint([{"page_key": "a", "family": "fam_x", "split": "val"},
                                        {"page_key": "b", "family": "fam_x", "split": "val"}])
+
+
+def test_splits_load_digest_tamper_and_legacy(tmp_path, monkeypatch):
+    """load()'s three branches: digest present (and matching / tampered), and a legacy file."""
+    import hashlib
+    import json
+    from bleedbench import families as FAM, splits
+    monkeypatch.setattr(splits, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    monkeypatch.setattr(FAM, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    fam = {"s1": "fam_x", "s2": "fam_y"}
+    (tmp_path / "families.json").write_text(json.dumps(fam, indent=0))
+    rows = [{"page_key": "a", "family": "fam_x", "split": "val"},
+            {"page_key": "b", "family": "fam_y", "split": "test"}]
+    canon = hashlib.sha256(json.dumps(fam, sort_keys=True).encode()).hexdigest()
+
+    def write_splits(digest=None):
+        d = {"seed": "s", "pages": rows}
+        if digest is not None:
+            d["families_sha256"] = digest
+        (tmp_path / "splits.json").write_text(json.dumps(d))
+
+    write_splits(canon)                                # matching digest: accepted
+    assert splits.load() == {"a": rows[0], "b": rows[1]}
+    raw = (tmp_path / "families.json").read_bytes()
+    # format-only rewrite: re-indented *and* key-reordered, same assignment
+    (tmp_path / "families.json").write_text(json.dumps({"s2": fam["s2"], "s1": fam["s1"]}, indent=4))
+    assert (tmp_path / "families.json").read_bytes() != raw
+    assert splits._families_sha() == canon and len(splits.load()) == 2   # same assignment, same digest
+    (tmp_path / "families.json").write_text(json.dumps({"s1": "fam_z", "s2": "fam_y"}, indent=0))
+    with pytest.raises(splits.StaleSplits, match="families.json changed"):   # tampered families
+        splits.load()
+    # legacy file (no digest): checked against the current families, then accepted
+    (tmp_path / "families.json").write_text(json.dumps({"s1": "fam_x", "s2": "fam_x"}, indent=0))
+    monkeypatch.setattr(splits.LP, "load", lambda: [{"page_key": "a", "sha256": "s1"},
+                                                    {"page_key": "b", "sha256": "s2"}])
+    legacy = [{"page_key": "a", "family": "fam_x", "split": "val"},
+              {"page_key": "b", "family": "fam_x", "split": "val"}]
+    (tmp_path / "splits.json").write_text(json.dumps({"seed": "s", "pages": legacy}))
+    with pytest.warns(UserWarning):
+        got = splits.load()
+    assert set(got) == {"a", "b"} and got["b"] == legacy[1]
+    # families.json gone with a digest present: StaleSplits, not a bare FileNotFoundError
+    write_splits(canon)
+    (tmp_path / "families.json").unlink()
+    with pytest.raises(splits.StaleSplits, match="families.json is missing"):
+        splits.load()
+
+
+def test_splits_build_records_a_stable_digest(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    from bleedbench import families as FAM, splits
+    monkeypatch.setattr(splits, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    monkeypatch.setattr(FAM, "private_dir", lambda *p: tmp_path.joinpath(*p))
+    fam = {"s1": "fam_a", "s2": "fam_b"}
+    (tmp_path / "families.json").write_text(json.dumps(fam, indent=0))
+    monkeypatch.setattr(splits, "usable_pages", lambda: [
+        {"page_key": "a", "sha256": "s1", "family": "fam_a", "gt_source": "real_bleedbox",
+         "stop": 2, "full": 1},
+        {"page_key": "b", "sha256": "s2", "family": "fam_b", "gt_source": "pseudo",
+         "stop": 1, "full": 0}])
+    first, second = splits.build(), splits.build()
+    assert first["sha256"] == second["sha256"]         # two consecutive builds agree
+    canon = hashlib.sha256(json.dumps(fam, sort_keys=True).encode()).hexdigest()
+    assert json.loads((tmp_path / "splits.json").read_text())["families_sha256"] == canon
 
 
 def test_small_page_tiles_invalid():
     g = Geometry.at(300)
     specs = place_tiles("tiny", 300, 300, g)
     assert not any(t.valid for t in specs)
+
+
+def test_small_page_depth_guard_isolates_top_and_bottom():
+    """600x460: top/bottom clear the lateral check (usable = 88 >= 0) and are rejected only by
+    the depth guard (460 + 48 < 512); five pixels deeper they become placeable again."""
+    g = Geometry.at(300)
+    assert 600 - g.tile == 88 >= 0 and 460 + g.B < g.tile
+    assert not any(t.valid for t in place_tiles("c", 600, 460, g))
+    assert any(t.valid for t in place_tiles("c", 600, 465, g))   # only the depth clause can reject
+
+
+def test_scored_ring_wider_than_band_does_not_wrap():
+    """b=38, a=0 -> B=38: a 60 px scored ring would start the top band at -22, which numpy
+    wraps to the bottom-right of the canvas instead of the top."""
+    with pytest.warns(UserWarning, match="scored"):
+        g = Geometry(b=38, a=0, scored=60)
+    W, H = 600, 400
+    unk, sc = canvas_masks(W, H, g)
+    assert g.s == 60                                   # the geometry keeps the requested width
+    assert (sc == unk).all()                           # the mask clamps it to the band
+    assert sc[: g.B].all() and not sc[g.B:g.B + H, g.B:g.B + W].any()
+    _, sc_sides = canvas_masks(W, H, g, sides={e: 60 for e in EDGES})
+    assert (sc_sides == unk).all()                     # per-edge widths are clamped too
 
 
 def test_rotation_roundtrip_and_latent():

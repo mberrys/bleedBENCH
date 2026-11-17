@@ -78,7 +78,12 @@ def _prepare(doc: pymupdf.Document, index: int) -> pymupdf.Page:
 
 def render_rect(page: pymupdf.Page, r: pymupdf.Rect) -> pymupdf.Rect:
     """Box (TrimBox/BleedBox, as PyMuPDF reports it) -> render/display-list space, whose origin
-    is the CropBox top-left. Without this, a MediaBox not starting at (0, 0) misplaces the trim."""
+    is the CropBox top-left. Without this, a MediaBox not starting at (0, 0) misplaces the trim.
+
+    Precondition: the caller must have gone through `_prepare` first, so the page is unrotated
+    (rotation is reset there) and CropBox equals MediaBox; on an unprepared page this maps
+    against a stale CropBox and the trim lands off by the box offsets.
+    """
     c = page.cropbox
     return pymupdf.Rect(r.x0 - c.x0, r.y0 - c.y0, r.x1 - c.x0, r.y1 - c.y0)
 

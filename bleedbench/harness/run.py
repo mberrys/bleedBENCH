@@ -54,6 +54,19 @@ def _apron_for_band(B: int) -> int:
     return {32: 13, 48: 10, 80: 5, 64: 4}[B]
 
 
+def _complete_rows(path: Path):
+    """Rows of a run CSV, skipping torn rows (a hard kill can leave a row with no last field).
+
+    A torn row is not a page boundary: its page is redone on resume. Both the resume scan and
+    the rewrite below must agree on that, so they share this one reader.
+    """
+    with open(path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row.get(_FIELDS[-1]) is None:      # torn row from a hard kill
+                continue
+            yield row
+
+
 def run(run_id: str, page_keys: list[str], methods: dict[str, Method], split_of: dict[str, str],
         family_of: dict[str, str], track: str = "C0-T1", orients=ORIENTS) -> Path:
     out_dir = private_dir("runs", run_id)
@@ -63,16 +76,12 @@ def run(run_id: str, page_keys: list[str], methods: dict[str, Method], split_of:
     # the last page in the file may be partial and is redone.
     done: list[str] = []
     if path.exists():
-        with open(path, encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                if row.get(_FIELDS[-1]) is None:      # torn row from a hard kill: not a page boundary
-                    continue
-                if not done or done[-1] != row["page_id"]:
-                    done.append(row["page_id"])
+        for row in _complete_rows(path):
+            if not done or done[-1] != row["page_id"]:
+                done.append(row["page_id"])
         keep = set(done[:-1])
         if keep:
-            with open(path, encoding="utf-8") as f:
-                rows_keep = [r for r in csv.DictReader(f) if r["page_id"] in keep]
+            rows_keep = [r for r in _complete_rows(path) if r["page_id"] in keep]
             with open(path, "w", newline="", encoding="utf-8") as f:
                 w = csv.DictWriter(f, fieldnames=_FIELDS, extrasaction="ignore")
                 w.writeheader()
