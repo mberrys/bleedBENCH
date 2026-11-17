@@ -19,6 +19,17 @@ REF = "edge_repeat"
 # v2.1 DD84: STOP (art ends exactly at the trim) is missing bleed; its GT ring (paper) is not the
 # desired output, so it has no fidelity GT. Scored classes: FULL (fidelity) and NO_INK (restraint).
 SCORED_CLASSES = ("FULL", "NO_INK")
+
+
+def certification_rows(rows: list[dict]) -> list[dict]:
+    """Rows on the certification basis (DD74): orientation 0 and a scored bleed class.
+
+    Every severe bound and gate statistic uses this basis. Keeping the predicate here stops
+    each caller from re-deriving it with a slightly different filter.
+    """
+    return [r for r in rows if r["orientation"] == 0 and r["label_bleed_class"] in SCORED_CLASSES]
+
+
 NUM = ("mae", "delta_e", "ssim", "seam_step", "seam_dE", "boundary_gradient_error", "clamp_seam_dE",
        "preclamp_changed", "preclamp_changed_max", "trim_violations", "stop_false_ink", "stop_blob_px",
        "stop_accept", "invented_area", "solid_drift", "abs_fail", "runtime_ms")
@@ -81,7 +92,7 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
     out = {"oracle_methods": list(ORACLE_METHODS), "methods": {}}
     # design effects from the reference method (tile in page; page in family)
     ref = by_m[REF]
-    o0 = [r for r in ref if r["orientation"] == 0]       # certification unit (DD74)
+    o0 = certification_rows(ref)                      # certification unit (DD74)
     icc_t, m_t = ST.icc_oneway(np.array([r["mae"] for r in o0]), np.array([r["page_id"] for r in o0]))
     pf = ref_page
     fam_of = {r["page_id"]: r["family_id"] for r in ref}
@@ -103,7 +114,7 @@ def summarise(rows: list[dict], oracle: dict, methods: list[str] | None = None) 
         sev = np.array([r["severe"] for r in rs])
         # CP-DE bound on orientation-0 units only: de_tile is measured on them, and rotations of
         # a tile are near-copies that would inflate n four-fold (DD74).
-        sev0 = np.array([r["severe"] for r in rs if r["orientation"] == 0])
+        sev0 = np.array([r["severe"] for r in certification_rows(rs)])
         af = np.array([r["abs_fail"] or 0 for r in rs])
         page = _page_fid(rs)
         common = sorted(set(page) & set(ref_page))

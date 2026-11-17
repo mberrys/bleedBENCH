@@ -50,12 +50,14 @@ def _o14(rows, oracle7):
 
 
 def _gate(rows, oracle, method, conf_fn, de_tile):
+    units = AG.certification_rows(rows)
+
     def part(split):
-        rs = [r for r in rows if r["method"] == method and r["split"] == split and r["orientation"] == 0
-              and r["unit"] in oracle and r["label_bleed_class"] in AG.SCORED_CLASSES]
+        rs = [r for r in units if r["method"] == method and r["split"] == split
+              and r["unit"] in oracle]
         sev = np.array([severe(r["mae"], oracle[r["unit"]][1]) for r in rs])
-        ref = [r for r in rows if r["method"] == AG.REF and r["split"] == split and r["orientation"] == 0
-               and r["unit"] in oracle and r["label_bleed_class"] in AG.SCORED_CLASSES]
+        ref = [r for r in units if r["method"] == AG.REF and r["split"] == split
+               and r["unit"] in oracle]
         ref_rate = float(np.mean([severe(r["mae"], oracle[r["unit"]][1]) for r in ref])) if ref else 0.0
         # the gate sees feat_* columns only (DD71): never mae/ssim/abs_fail or ids
         feats = [{k: r[k] for k in FT.FEATURES} for r in rs]
@@ -88,8 +90,8 @@ def _gate(rows, oracle, method, conf_fn, de_tile):
 
 def transfer_table(real_runs: list[str], pseudo_runs: list[str]) -> dict:
     """T10 / O15: same methods on real-GT and pseudo pages of the dev families (orientation 0)."""
-    real = [r for r in AG.load_rows(real_runs) if r["orientation"] == 0 and r["label_bleed_class"] in AG.SCORED_CLASSES]
-    pseudo = [r for r in AG.load_rows(pseudo_runs) if r["orientation"] == 0 and r["label_bleed_class"] in AG.SCORED_CLASSES]
+    real = AG.certification_rows(AG.load_rows(real_runs))
+    pseudo = AG.certification_rows(AG.load_rows(pseudo_runs))
     out = {}
     for name, rs in (("real", real), ("pseudo", pseudo)):
         by = {}
@@ -110,9 +112,8 @@ def rank_transfer(tier_a_runs: list[str], real_runs: list[str]) -> dict:
     """O13: does the synthetic tier rank methods like real C0 does? (orientation 0, scored classes)"""
     def means(runs):
         by = {}
-        for r in AG.load_rows(runs):
-            if r["orientation"] == 0 and r["label_bleed_class"] in AG.SCORED_CLASSES:
-                by.setdefault(r["method"], []).append(r["mae"])
+        for r in AG.certification_rows(AG.load_rows(runs)):
+            by.setdefault(r["method"], []).append(r["mae"])
         return {m: float(np.mean(v)) for m, v in by.items()}
     a, c = means(tier_a_runs), means(real_runs)
     common = sorted(set(a) & set(c) - {"paper_fill"})

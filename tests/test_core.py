@@ -175,15 +175,15 @@ def test_small_page_depth_guard_isolates_top_and_bottom():
     assert any(t.valid for t in place_tiles("c", 600, 465, g))   # only the depth clause can reject
 
 
-def test_scored_ring_wider_than_band_does_not_wrap():
-    """b=38, a=0 -> B=38: a 60 px scored ring would start the top band at -22, which numpy
-    wraps to the bottom-right of the canvas instead of the top."""
+def test_scored_ring_wider_than_band_is_clamped_at_construction():
+    """b=38, a=0 -> B=38. A 60 px request is clamped to b so `g.s` stays the effective width;
+    neither the uniform nor the per-edge mask can then start a slice before the canvas."""
     with pytest.warns(UserWarning, match="scored"):
         g = Geometry(b=38, a=0, scored=60)
     W, H = 600, 400
     unk, sc = canvas_masks(W, H, g)
-    assert g.s == 60                                   # the geometry keeps the requested width
-    assert (sc == unk).all()                           # the mask clamps it to the band
+    assert g.s == g.b == 38                             # g.s reports the effective width
+    assert (sc == unk).all()                           # the whole band is scored
     assert sc[: g.B].all() and not sc[g.B:g.B + H, g.B:g.B + W].any()
     _, sc_sides = canvas_masks(W, H, g, sides={e: 60 for e in EDGES})
     assert (sc_sides == unk).all()                     # per-edge widths are clamped too
