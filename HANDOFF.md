@@ -28,7 +28,7 @@ Private, never committed (`_private/`, gitignored): inventory, review decisions,
 - **Synthetic transfer (O13):** Tier A vs C0 dev Spearman 0.64 (nine methods, low power), below the 0.8 target. bleedgen v0 is not yet a faithful ranking proxy.
 - **Trained models** (train_fit only, selected on train_dev, no real-GT family seen):
   - `strip_unet_mix` (residual over edge repeat, 15.1 M params) converged to a zero residual; its dev output is identical to edge repeat. Ablations were skipped.
-  - `lama_ft_c0` (big-LaMa, 3,000 fine-tune steps) **ties** edge repeat: MAE 10.81 vs 10.74, ΔMAE +0.07 [−0.54, 1.69], SystemGain +0.21 [−3.48, 2.87]. It cuts LaMa's flat drift (0.79 vs 2.45; edge repeat 0.30) and wins on structure (24.9 vs 26.1), but its severe rate is 6.5% vs 3.5%, and it costs 92 ms/tile vs 16 ms. It beats edge repeat on pseudo pages (7.00 vs 8.23), which mostly does not transfer.
+  - `lama_ft_c0` (big-LaMa, 3,000 fine-tune steps) **ties** edge repeat: MAE 10.81 vs 10.74, ΔMAE +0.07 [−0.54, 1.69], SystemGain +0.21 [−3.48, 2.87]. It cuts LaMa's flat drift (0.79 vs 2.45; edge repeat 0.30) and wins on structure (24.9 vs 26.1), but its severe rate is 6.5% vs 3.5%, and it costs 92 ms/tile vs 16 ms. It beats edge repeat on pseudo pages (7.58 vs 8.79), which mostly does not transfer.
   - No gate is selectable for any model on C0.
 
 ## What to do next (in order)
