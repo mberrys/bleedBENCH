@@ -1,8 +1,8 @@
 """Tile runner: cut tiles for a set of pages, run methods in all four orientations, score.
 
 Inference sees only the input canvas (InputStore). GT is loaded afterwards for scoring, in the
-same process for classical methods; learned methods run in a subprocess with
-BLEEDBENCH_INFERENCE=1 (see harness/learned.py) so they cannot open the LabelStore.
+same process for every method; each call is wrapped in learned.sealed(), which sets
+BLEEDBENCH_INFERENCE=1 so a learned method cannot open the LabelStore (see harness/learned.py).
 Rows go to _private/runs/<run_id>/tiles.csv.
 """
 from __future__ import annotations

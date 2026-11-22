@@ -160,11 +160,13 @@ def label_one(rec: dict, inv: dict, ins: InputStore, lab: LabelStore) -> dict:
             invalid.append("V5_marks_in_ring")
         if ed["ring_padded_px"] and src != "pseudo":
             invalid.append("V11_ring_padded")
-        if src == "pseudo":
-            if texts[e]:
-                invalid.append("V13_text_in_band")
-            if frame_line(cv.rgb, B, e):
-                invalid.append("V13_frame_line")
+        if src == "pseudo" and texts[e]:
+            invalid.append("V13_text_in_band")
+        # V13 applies to the inferred ring too: a thin rule in the media margin means the
+        # inferred trim is wrong. A step boundary (art to paper at the media edge) does not
+        # trigger the test because only one side differs, so it is safe for a full-bleed page.
+        if src in ("pseudo", "inferred_trim") and frame_line(cv.rgb, B, e):
+            invalid.append("V13_frame_line")
         ed["invalid"] = invalid
     out["edges"] = edges
     out["paper"] = E.paper_estimate(cv.rgb, cv.padded, B)
