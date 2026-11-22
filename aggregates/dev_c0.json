@@ -130,8 +130,10 @@
    },
    "runtime_ms_median": 46.127,
    "seam_step_mean": 9.0198,
-   "severe_cp_de_ub95": 0.0498,
+   "severe_cp_de_ub95": 0.0728,
+   "severe_o0": 72,
    "severe_rate": 0.0349,
+   "severe_rate_o0": 0.0367,
    "system_gain_ungated": {
     "ci95": [
      0.0,
@@ -142,6 +144,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "lama": {
@@ -213,8 +216,10 @@
    },
    "runtime_ms_median": 64.605,
    "seam_step_mean": 9.6955,
-   "severe_cp_de_ub95": 0.2833,
+   "severe_cp_de_ub95": 0.3411,
+   "severe_o0": 540,
    "severe_rate": 0.2527,
+   "severe_rate_o0": 0.2752,
    "system_gain_ungated": {
     "ci95": [
      -3.5759,
@@ -225,6 +230,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "lama_ft_c0": {
@@ -296,8 +302,10 @@
    },
    "runtime_ms_median": 53.306,
    "seam_step_mean": 9.2419,
-   "severe_cp_de_ub95": 0.0836,
+   "severe_cp_de_ub95": 0.1126,
+   "severe_o0": 135,
    "severe_rate": 0.0647,
+   "severe_rate_o0": 0.0688,
    "system_gain_ungated": {
     "ci95": [
      -3.4773,
@@ -308,6 +316,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "linear_extrapolation": {
@@ -379,8 +388,10 @@
    },
    "runtime_ms_median": 46.572,
    "seam_step_mean": 9.4592,
-   "severe_cp_de_ub95": 0.2611,
+   "severe_cp_de_ub95": 0.3006,
+   "severe_o0": 465,
    "severe_rate": 0.2313,
+   "severe_rate_o0": 0.237,
    "system_gain_ungated": {
     "ci95": [
      -6.2845,
@@ -391,6 +402,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "mirror": {
@@ -462,8 +474,10 @@
    },
    "runtime_ms_median": 46.405,
    "seam_step_mean": 9.0198,
-   "severe_cp_de_ub95": 0.1089,
+   "severe_cp_de_ub95": 0.138,
+   "severe_o0": 177,
    "severe_rate": 0.0877,
+   "severe_rate_o0": 0.0902,
    "system_gain_ungated": {
     "ci95": [
      -18.751,
@@ -474,6 +488,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "ns": {
@@ -545,8 +560,10 @@
    },
    "runtime_ms_median": 26.351,
    "seam_step_mean": 9.1256,
-   "severe_cp_de_ub95": 0.086,
+   "severe_cp_de_ub95": 0.1224,
+   "severe_o0": 151,
    "severe_rate": 0.0669,
+   "severe_rate_o0": 0.077,
    "system_gain_ungated": {
     "ci95": [
      -0.3755,
@@ -557,6 +574,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "paper_fill": {
@@ -628,8 +646,10 @@
    },
    "runtime_ms_median": 1.511,
    "seam_step_mean": 76.1245,
-   "severe_cp_de_ub95": 0.7528,
+   "severe_cp_de_ub95": 0.7834,
+   "severe_o0": 1421,
    "severe_rate": 0.723,
+   "severe_rate_o0": 0.7243,
    "system_gain_ungated": {
     "ci95": [
      -135.8632,
@@ -640,6 +660,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "stretch": {
@@ -711,8 +732,10 @@
    },
    "runtime_ms_median": 46.503,
    "seam_step_mean": 9.0198,
-   "severe_cp_de_ub95": 0.0564,
+   "severe_cp_de_ub95": 0.0826,
+   "severe_o0": 87,
    "severe_rate": 0.0406,
+   "severe_rate_o0": 0.0443,
    "system_gain_ungated": {
     "ci95": [
      -8.8427,
@@ -723,6 +746,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "strip_unet_mix": {
@@ -794,8 +818,10 @@
    },
    "runtime_ms_median": 33.4015,
    "seam_step_mean": 9.0198,
-   "severe_cp_de_ub95": 0.0498,
+   "severe_cp_de_ub95": 0.0728,
+   "severe_o0": 72,
    "severe_rate": 0.0349,
+   "severe_rate_o0": 0.0367,
    "system_gain_ungated": {
     "ci95": [
      0.0,
@@ -806,6 +832,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   },
   "telea": {
@@ -877,8 +904,10 @@
    },
    "runtime_ms_median": 28.0185,
    "seam_step_mean": 9.4271,
-   "severe_cp_de_ub95": 0.3067,
+   "severe_cp_de_ub95": 0.3368,
+   "severe_o0": 532,
    "severe_rate": 0.2754,
+   "severe_rate_o0": 0.2712,
    "system_gain_ungated": {
     "ci95": [
      -1.1224,
@@ -889,6 +918,7 @@
     "n_families": 14
    },
    "tiles": 7848,
+   "tiles_o0": 1962,
    "trim_violations_tiles": 0
   }
  },
