@@ -5,6 +5,7 @@ Base canonical tile: unknown band on top (edge) or top-left L (corner).
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -32,6 +33,14 @@ class Geometry:
     def s(self) -> int:
         return self.b if self.scored is None else self.scored
 
+    def __post_init__(self) -> None:
+        # `s` is read by callers as the effective scored width, so a request wider than the band
+        # is clamped here rather than silently overridden inside canvas_masks.
+        if self.scored is not None and self.scored > self.b:
+            warnings.warn(f"Geometry.scored {self.scored} exceeds the ring b={self.b}; clamping to b",
+                          stacklevel=2)
+            object.__setattr__(self, "scored", self.b)
+
     @classmethod
     def at(cls, dpi: int = 300, bleed_in: float = 0.125, tile: int = 512, scored: int | None = None,
            legacy_v1: bool = False) -> "Geometry":
@@ -52,17 +61,21 @@ def whole_page_margins(W: int, H: int, B: int) -> dict:
 
 
 # --- masks ------------------------------------------------------------------------------------
-def canvas_masks(W: int, H: int, g: Geometry) -> tuple[np.ndarray, np.ndarray]:
+def canvas_masks(W: int, H: int, g: Geometry, sides: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
     """(unknown, scored) for a page canvas of trim + B on every side.
 
     unknown = everything outside the trim; scored = trim dilated by s (Chebyshev) minus trim,
     i.e. the ring including the corner squares. The apron (outer B - s) is unknown, unscored.
+    sides: optional per-edge scored widths (V12 is per edge); each is capped at g.s.
+    A corner square then spans its two arms' widths (left/right width x top/bottom width).
     """
-    B, s_ = g.B, g.s
+    B = g.B
+    # g.s <= b <= B by construction; clamp sides to [0, g.s] so no slice starts before the canvas.
+    s = {e: g.s if sides is None else max(0, min(sides[e], g.s)) for e in EDGES}
     unk = np.ones((H + 2 * B, W + 2 * B), bool)
     unk[B:B + H, B:B + W] = False
     sc = np.zeros_like(unk)
-    sc[B - s_:B + H + s_, B - s_:B + W + s_] = True
+    sc[B - s["top"]:B + H + s["bottom"], B - s["left"]:B + W + s["right"]] = True
     sc &= unk
     return unk, sc
 
@@ -100,7 +113,8 @@ def place_tiles(case_id: str, W: int, H: int, g: Geometry, per_edge: int | None 
     for edge in EDGES:
         L = W if edge in ("top", "bottom") else H
         usable = L - g.tile           # keep the tile's lateral extent inside the trim: one seam
-        if usable < 0:
+        depth = H if edge in ("top", "bottom") else W
+        if usable < 0 or depth + g.B < g.tile:     # tile would reach the opposite band (or past it)
             specs += [TileSpec("edge", edge, i, 0, False) for i in range(E)]   # V7
             continue
         spacing = L / E

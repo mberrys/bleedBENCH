@@ -76,10 +76,22 @@ def _prepare(doc: pymupdf.Document, index: int) -> pymupdf.Page:
     return doc[index]
 
 
+def render_rect(page: pymupdf.Page, r: pymupdf.Rect) -> pymupdf.Rect:
+    """Box (TrimBox/BleedBox, as PyMuPDF reports it) -> render/display-list space, whose origin
+    is the CropBox top-left. Without this, a MediaBox not starting at (0, 0) misplaces the trim.
+
+    Precondition: the caller must have gone through `_prepare` first, so the page is unrotated
+    (rotation is reset there) and CropBox equals MediaBox; on an unprepared page this maps
+    against a stale CropBox and the trim lands off by the box offsets.
+    """
+    c = page.cropbox
+    return pymupdf.Rect(r.x0 - c.x0, r.y0 - c.y0, r.x1 - c.x0, r.y1 - c.y0)
+
+
 def render_real(pdf_path: str, index: int, B: int = 48, dpi: int | None = None) -> Canvas:
     doc = pymupdf.open(pdf_path)
     page = _prepare(doc, index)
-    tb, bb = page.trimbox, page.bleedbox
+    tb, bb = render_rect(page, page.trimbox), render_rect(page, page.bleedbox)
     dpi = dpi or choose_dpi(tb.width, tb.height)
     z = dpi / 72.0
     Wf, Hf = tb.width * z, tb.height * z
@@ -98,7 +110,7 @@ def render_pseudo(pdf_path: str, index: int, B: int = 48, dpi: int | None = None
     """Canvas = MediaBox; pseudo-trim = media inset by B (V13 is applied in labelling)."""
     doc = pymupdf.open(pdf_path)
     page = _prepare(doc, index)
-    mb = page.mediabox
+    mb = page.rect                                  # = MediaBox after _prepare, in render space
     dpi = dpi or choose_dpi(mb.width, mb.height)
     z = dpi / 72.0
     Wm, Hm = round(mb.width * z), round(mb.height * z)
@@ -117,7 +129,7 @@ def integrity_ring_diff(pdf_path: str, index: int, canvas: Canvas) -> dict:
     """
     doc = pymupdf.open(pdf_path)
     page = _prepare(doc, index)
-    tb = page.trimbox
+    tb = render_rect(page, page.trimbox)
     z = canvas.dpi / 72.0
     B, W, H = canvas.B, canvas.W, canvas.H
     depth = B + 16
