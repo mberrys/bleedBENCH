@@ -36,7 +36,7 @@ def _boot_prop(fam_num: dict, fam_den: dict, seed: int = 0) -> dict:
     den = np.array([fam_den[f] for f in fams], float)
     n_f = int((den > 0).sum())
     if den.sum() == 0:
-        return {"n": 0, "n_families": n_f, "suppressed": True}
+        return {"suppressed": True}
     p = float(num.sum() / den.sum())
     if n_f < K_ANON_FAMILIES:
         return {"suppressed": True}
