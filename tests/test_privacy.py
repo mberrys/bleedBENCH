@@ -28,3 +28,14 @@ def test_check_no_private_blocks(tmp_path):
     spec.loader.exec_module(m)
     errs = m.check(["_corpus/x.pdf", "_private/labels.jsonl", "bleedbench/a.png", "README.md"])
     assert len(errs) == 3
+
+
+def test_export_rejects_a_path_like_key_and_a_plain_name_value():
+    for bad in ({"a/b": 1}, {"method": "John Smith"}):
+        with pytest.raises(ExportViolation):
+            validate_export(bad)
+
+
+def test_export_rejects_a_suppressed_cell_that_carries_data():
+    with pytest.raises(ExportViolation):
+        validate_export({"cells": {"x": {"suppressed": True, "n": 3}}})

@@ -12,11 +12,22 @@ from ..geometry import EDGES
 
 INK_DE = 1.5
 INK_DL = 2.0
+FULL_FRAC = 0.8       # V4: FULL needs this share of the scored ring
+FULL_MIN_PX = 2       # D_e <= 1 is STOP, so a floor of 2 keeps the classes ordered
 _ROT = {"top": 0, "left": 3, "bottom": 2, "right": 1}   # np.rot90 k bringing the edge to top
 
 
 def edge_view(a: np.ndarray, edge: str) -> np.ndarray:
     return np.rot90(a, k=_ROT[edge], axes=(0, 1))
+
+
+def full_min_px(s: int) -> int:
+    """V4 FULL threshold: a share of the scored ring, so it tracks DPI via V12.
+
+    At 300 DPI s = 38 -> 30 px; at 150 DPI s = 19 -> 15 px. The old fixed 30 px could never be
+    reached by a 150 DPI render, so such pages could only be AMBIGUOUS.
+    """
+    return max(FULL_MIN_PX, round(FULL_FRAC * s))
 
 
 def ink_mask(rgb: np.ndarray, paper_rgb=(255, 255, 255)) -> np.ndarray:
@@ -58,12 +69,13 @@ def classify_edge(canvas_rgb: np.ndarray, padded: np.ndarray, B: int, s: int, ed
         cls = "NO_INK"
     elif D <= 1:
         cls = "STOP"
-    elif D >= 30:
+    elif D >= full_min_px(s):
         cls = "FULL"
     else:
         cls = "AMBIGUOUS"
     return {"edge": edge, "class": cls, "depth_q90": D, "ink_at_trim_frac": float(ink_t.mean()),
-            "ring_ink_frac": float(ink_r.mean()), "ring_padded_px": int(pad_r.sum()), "scored_px": s}
+            "ring_ink_frac": float(ink_r.mean()), "ring_padded_px": int(pad_r.sum()), "scored_px": s,
+            "full_min_px": full_min_px(s)}
 
 
 def outer_uniformity(canvas_rgb: np.ndarray, B: int, s: int, edge: str) -> float:

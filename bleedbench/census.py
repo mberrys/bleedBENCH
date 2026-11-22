@@ -50,13 +50,24 @@ def _boot_prop(fam_num: dict, fam_den: dict, seed: int = 0) -> dict:
             "n": int(den.sum()), "n_families": n_f}
 
 
-def _outer_no_ink(lab: LabelStore, page_key: str) -> list[bool]:
-    """Deployment trim = media edge: NO_INK if <2% of positions have ink in the outer 2 px."""
+def _outer_no_ink(lab: LabelStore, page_key: str, rec: dict) -> list[bool]:
+    """Deployment trim = media edge: NO_INK if <2% of positions have ink in the outer 2 px.
+
+    On an inferred_trim page the media sits 9 pt outside the trim, so rows 0-1 of the canvas
+    are apron, not media. Walk in to the media edge before reading, or every such page counts
+    as quiet and inflates the deployment prior.
+    """
     g = lab.gt(page_key)
+    inset = 0
+    if rec.get("gt_source") == "inferred_trim":
+        inset = max(0, round(rec["B"] - 9 * rec.get("dpi", 300) / 72))
     out = []
     for e in EDGES:
         v = E.edge_view(g, e)
-        band = v[:2, 2:-2]
+        band = v[inset:inset + 2, inset + 2:v.shape[1] - inset - 2] if inset else v[:2, 2:-2]
+        if band.size == 0:                      # a page too small for the inset has no media edge
+            out.append(True)
+            continue
         ink = E.ink_mask(band).any(axis=0)
         out.append(float(ink.mean()) < 0.02)
     return out
@@ -80,7 +91,7 @@ def build() -> dict:
         if L["gt_source"] == "real_bleedbox":
             no_ink = [e["class"] == "NO_INK" for e in L["edges"]]
         else:
-            no_ink = _outer_no_ink(lab, k)
+            no_ink = _outer_no_ink(lab, k, L)
         quiet_den[f] += 1
         quiet_num[f] += all(no_ink)
         p = probes[k]
@@ -118,7 +129,8 @@ def build() -> dict:
                 continue
             class_counts[e["class"]] += 1
             d = e["depth_q90"]
-            depth_hist["0-1" if d <= 1 else "2-29" if d < 30 else ">=30"] += 1
+            thr = e.get("full_min_px", 30)          # V4: the FULL threshold tracks the scored ring
+            depth_hist["0-1" if d <= 1 else "2..full-1" if d < thr else ">=full"] += 1
             if e["class"] in ("FULL", "STOP"):
                 mat = MATERIAL_NAMES.get(e["material"], "other")
                 cls_den[mat][f] += 1

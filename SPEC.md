@@ -434,8 +434,8 @@ These rules decide whether an edge's GT is trustworthy and what class it is. The
 |---|---|---|---|
 | `NO_INK` | no ink in the first 2 px inside the trim on ≥98% of positions | trim edge is paper | often dropped as blank ring |
 | `STOP` | `D_e ≤ 1` and ink at trim | artwork stops at trim; correct answer is paper | **dropped** by v1 |
-| `FULL` | `D_e ≥ 30` | real hidden bleed exists | “valid” |
-| `AMBIGUOUS` | `2 ≤ D_e < 30` | held out of primary analysis; synthetic only for F | none (gap) |
+| `FULL` | `D_e ≥ full_min`, where `full_min = max(2, round(0.8·s))` and `s` is the scored ring width (V12) | real hidden bleed exists | “valid” |
+| `AMBIGUOUS` | `2 ≤ D_e < full_min` | held out of primary analysis; synthetic only for F | none (gap) |
 
 **V5 — Edge valid if GT trustworthy.** An edge is included unless: the GT ring contains crop/registration marks or vector marks that are not page artwork; the source has missing/incorrect ICC; the render is corrupted; or >2% of positions have contradictory evidence (ink at trim but alternating paper/ink in the ring at a spatial frequency inconsistent with artwork). Reasons are recorded; the default is include, classify and score.
 
@@ -1556,7 +1556,7 @@ Every design decision, with its one-line reason. Metric IDs are in §4; `DD` num
 | DD13 | Publish `roundtrip_gt` floor | Without it, a CMYK dE cannot be attributed to the model. |
 | DD14 | Classify STOP/NO_INK instead of dropping | The ~35% of v1 pages where paper is correct (43/124: 10 blank + 33 short) are the restraint test, not invalid data. |
 | DD15 | Ink test uses ΔE00 relative to paper | v1's 200/245 thresholds miss pale tints and coloured paper. |
-| DD16 | Depth p90, classes at ≤1 / 2–29 / ≥30 | Matches the measured bimodality and holds out the empty middle class. |
+| DD16 | Depth p90, classes at ≤1 / 2–`full_min` / ≥`full_min`, with `full_min = max(2, round(0.8·s))` | Matches the measured bimodality and holds out the empty middle class; the threshold tracks DPI through the scored ring (V12) instead of a fixed 30 px that 150 DPI pages can never reach. |
 | DD17 | No drop for “art stops short of full bleed” | That is the production case the benchmark exists to score. |
 | DD18 | Family-level 50/25/25 splits | Page/tile splits leak content and overstate significance. |
 | DD19 | Public synthetic train split | Public baselines need training data that is disjoint from evaluation. |

@@ -50,6 +50,7 @@ def _o14(rows, oracle7):
 
 
 def _gate(rows, oracle, method, conf_fn, de_tile):
+    GATE.assert_gate_code(conf_fn)          # V10: a gate may not name label/id columns
     units = AG.certification_rows(rows)
 
     def part(split):

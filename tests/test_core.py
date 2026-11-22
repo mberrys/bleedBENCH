@@ -338,3 +338,17 @@ def test_determinism_classical():
     g, inp, unk, sc = _edge_case(gt)
     for fn in C.CLASSICAL.values():
         assert (fn(inp, unk) == fn(inp, unk)).all()
+
+
+def test_full_threshold_scales_with_the_scored_ring():
+    from bleedbench.label.edges import full_min_px
+    assert full_min_px(38) == 30          # 300 DPI
+    assert full_min_px(19) == 15          # 150 DPI
+    assert full_min_px(1) == 2            # floor keeps FULL above STOP
+
+
+def test_band_reads_stored_values_with_a_dpi_fallback():
+    from bleedbench.harness.run import _band
+    assert _band({"B": 48, "dpi": 300, "b": 38, "a": 10}) == (38, 10)
+    assert _band({"B": 48, "dpi": 300}) == (38, 10)       # older store: derive from B and dpi
+    assert _band({"B": 38, "dpi": 300}) == (38, 0)        # legacy v1 band
