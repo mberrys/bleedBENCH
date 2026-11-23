@@ -43,7 +43,8 @@ def hid(kind: str, value: str, n: int = 16, salt_path: Path = SALT_PATH) -> str:
 
 _FORBIDDEN_KEY = re.compile(r"(^|_)(path|file|filename|name|client|text|url|caption|title|email|phone)(_|$)", re.I)
 _PATHLIKE = re.compile(r"([A-Za-z]:\\|/|\\|\.pdf|\.png|\.jpe?g|\.zip)", re.I)
-_ALLOWED_STR = re.compile(r"^[A-Za-z0-9_.:+\-%<>=≥≤ ()/]*$")
+# No whitespace: a free-text name ("John Smith") must not survive the allowlist.
+_ALLOWED_STR = re.compile(r"^[A-Za-z0-9_.:+\-%<>=≥≤()/]*$")
 
 
 class ExportViolation(ValueError):
@@ -53,10 +54,16 @@ class ExportViolation(ValueError):
 def validate_export(obj: Any, where: str = "$") -> None:
     """Reject anything that is not a plain aggregate.
 
-    Rules: no key that suggests a path/name/free text; no path-like strings; every dict that
-    carries `n_families` must have it >= K_ANON_FAMILIES unless it is marked suppressed.
+    Rules: no key that suggests a path/name/free text; keys and values must pass the same
+    string allowlist; a suppressed cell holds exactly {"suppressed": true}; every dict that
+    carries `n_families` must have it >= K_ANON_FAMILIES.
     """
     if isinstance(obj, dict):
+        if obj.get("suppressed") is True:
+            if set(obj) != {"suppressed"}:
+                raise ExportViolation(f"{where}: suppressed cell carries extra fields {sorted(obj)}")
+        elif "suppressed" in obj:
+            raise ExportViolation(f"{where}: suppressed must be exactly True")
         if "n_families" in obj and not obj.get("suppressed"):
             nf = obj["n_families"]
             if not isinstance(nf, int) or nf < K_ANON_FAMILIES:
@@ -66,17 +73,22 @@ def validate_export(obj: Any, where: str = "$") -> None:
                 raise ExportViolation(f"{where}: non-string key")
             if _FORBIDDEN_KEY.search(k) and k not in _KEY_ALLOW:
                 raise ExportViolation(f"{where}.{k}: forbidden key")
+            _check_string(k, f"{where}.<key>")
             validate_export(v, f"{where}.{k}")
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
             validate_export(v, f"{where}[{i}]")
     elif isinstance(obj, str):
-        if len(obj) > 80 or _PATHLIKE.search(obj.replace("n/a", "")) or not _ALLOWED_STR.match(obj):
-            raise ExportViolation(f"{where}: string not allowed in export: {obj[:30]!r}")
+        _check_string(obj, where)
     elif obj is None or isinstance(obj, (int, float, bool)):
         return
     else:
         raise ExportViolation(f"{where}: unsupported type {type(obj).__name__}")
+
+
+def _check_string(s: str, where: str) -> None:
+    if len(s) > 80 or _PATHLIKE.search(s.replace("n/a", "")) or not _ALLOWED_STR.match(s):
+        raise ExportViolation(f"{where}: string not allowed in export: {s[:30]!r}")
 
 
 # Keys that look sensitive by regex but are fixed vocabulary in our schema.

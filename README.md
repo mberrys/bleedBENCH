@@ -17,7 +17,7 @@ This repository holds the **v2.1 specification** and its **reference harness** (
 - **STOP edges are missing bleed, not restraint.** On real print-ready files, art that ends exactly at the trim is a prepress defect the shop wants extended; v2.0 scored "paper" as correct there. Restraint is now scored where the trim is paper (NO_INK).
 - **D1/D2 contradiction fixed** — full-image models are no longer disqualified for regenerating pixels they then composite away.
 - **V12**: a 0.125 in BleedBox is 37.5 px at 300 DPI; only the 37 whole pixels are scored.
-- **Measured priors and design effects** replace v2.0's assumptions where the data are precise enough (quiet pages 28% not 50%; tile design effect 12.9 not 2.35).
+- **Measured priors and design effects** replace v2.0's assumptions where the data are precise enough (quiet pages 27% not 50%; tile design effect 12.9 not 2.35).
 - **Leakage controls for corpus-trained models**: evidence-based client families, train/dev/gate-fit partitions, training manifests, no unpickling of weights.
 
 ## The harness

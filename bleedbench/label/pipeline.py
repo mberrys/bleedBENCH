@@ -48,7 +48,7 @@ def frame_line(canvas_rgb: np.ndarray, B: int, edge: str) -> bool:
     return False
 
 
-def _canvas_from_raster(path: str, B: int) -> R.Canvas:
+def _load_raster_rgb(path: str) -> np.ndarray:
     with Image.open(path) as im:
         if im.mode in ("RGBA", "LA", "P"):
             im = im.convert("RGBA")
@@ -57,10 +57,35 @@ def _canvas_from_raster(path: str, B: int) -> R.Canvas:
         if im.mode == "CMYK" and im.info.get("icc_profile"):
             src = ImageCms.ImageCmsProfile(__import__("io").BytesIO(im.info["icc_profile"]))
             im = ImageCms.profileToProfile(im, src, ImageCms.createProfile("sRGB"), outputMode="RGB")
-        rgb = np.asarray(im.convert("RGB")).copy()
+        return np.asarray(im.convert("RGB")).copy()
+
+
+def _canvas_from_raster(path: str, B: int) -> R.Canvas:
+    """Pseudo/legacy raster: the image is already the canvas, trim = image inset by B."""
+    rgb = _load_raster_rgb(path)
     H, W = rgb.shape[:2]
     b = bleed_px(300)
     return R.Canvas(rgb, W - 2 * B, H - 2 * B, B, 300, np.zeros((H, W), bool), {e: b for e in EDGES},
+                    {"fractional_trim": False})
+
+
+def _inferred_raster_canvas(path: str, B: int, b: int, dpi: int) -> R.Canvas:
+    """inferred_trim raster: the image is the media, trim = media inset by b, padded out to B.
+
+    The raster branch used to inset the trim by the full band B, so the ring was 10 px too deep
+    and the page was scored against media outside the inferred trim. Pad the media to the
+    canvas band and score exactly the b px between the inferred trim and the media edge.
+    """
+    rgb = _load_raster_rgb(path)
+    Hm, Wm = rgb.shape[:2]
+    pad = B - b
+    if pad < 0:
+        raise ValueError(f"band B={B} is narrower than the bleed b={b}")
+    canvas = np.full((Hm + 2 * pad, Wm + 2 * pad, 3), 255, np.uint8)
+    canvas[pad:pad + Hm, pad:pad + Wm] = rgb
+    padded = np.ones(canvas.shape[:2], bool)
+    padded[pad:pad + Hm, pad:pad + Wm] = False
+    return R.Canvas(canvas, Wm - 2 * b, Hm - 2 * b, B, dpi, padded, {e: b for e in EDGES},
                     {"fractional_trim": False})
 
 
@@ -82,8 +107,10 @@ def label_one(rec: dict, inv: dict, ins: InputStore, lab: LabelStore) -> dict:
     path = inv["abspath"]
     out = {"page_key": rec["page_key"], "sha256": rec["sha256"], "gt_source": src, "kind": rec["kind"]}
     if rec["kind"] == "raster":
-        B = band_px(bleed_px(300))
-        cv = _canvas_from_raster(path, B)
+        dpi = rec.get("dpi") or 300
+        b = bleed_px(dpi)
+        B = band_px(b)
+        cv = _inferred_raster_canvas(path, B, b, dpi) if src == "inferred_trim" else _canvas_from_raster(path, B)
         trim_pt = bleed_pt_rect = None
     elif src == "real_bleedbox":
         dpi = R.choose_dpi(*(np.array(rec["trim_in"]) * 72))
@@ -133,15 +160,19 @@ def label_one(rec: dict, inv: dict, ins: InputStore, lab: LabelStore) -> dict:
             invalid.append("V5_marks_in_ring")
         if ed["ring_padded_px"] and src != "pseudo":
             invalid.append("V11_ring_padded")
-        if src == "pseudo":
-            if texts[e]:
-                invalid.append("V13_text_in_band")
-            if frame_line(cv.rgb, B, e):
-                invalid.append("V13_frame_line")
+        if src == "pseudo" and texts[e]:
+            invalid.append("V13_text_in_band")
+        # V13 applies to the inferred ring too: a thin rule in the media margin means the
+        # inferred trim is wrong. A step boundary (art to paper at the media edge) does not
+        # trigger the test because only one side differs, so it is safe for a full-bleed page.
+        if src in ("pseudo", "inferred_trim") and frame_line(cv.rgb, B, e):
+            invalid.append("V13_frame_line")
         ed["invalid"] = invalid
     out["edges"] = edges
     out["paper"] = E.paper_estimate(cv.rgb, cv.padded, B)
-    ins.put(rec["page_key"], cv.rgb, cv.W, cv.H, B, {"dpi": cv.dpi, "gt_source": src})
+    b = bleed_px(cv.dpi)
+    ins.put(rec["page_key"], cv.rgb, cv.W, cv.H, B,
+            {"dpi": cv.dpi, "gt_source": src, "b": b, "a": B - b})
     lab.put(rec["page_key"], cv.rgb, cv.padded, {"scored_px": cv.scored_px, "edges": edges, "gt_source": src})
     return out
 

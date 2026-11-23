@@ -31,3 +31,25 @@ def test_severe_bound_is_built_from_the_orientation_zero_subset():
     assert probe["severe_cp_de_ub95"] == round(ST.cp_de_upper(1, 6, de), 4)
     assert probe["severe_cp_de_ub95"] != round(ST.cp_de_upper(19, 24, de), 4)   # not the all-rotation bound
     assert (ref["severe_o0"], ref["severe_rate"]) == (0, 0.0)
+
+
+def test_gate_rejects_a_label_aware_confidence_function():
+    import pytest
+    from bleedbench.harness import report as RP
+
+    def conf(rows):
+        return [r["label_content_class"] == "flat" for r in rows]
+
+    with pytest.raises(ValueError, match="forbidden"):
+        RP._gate([], {}, "m", conf, 1.0)
+
+
+def test_missing_bleed_publishes_n_families_and_suppresses_small_cells():
+    stop = [(f"p{i}", 5.0) for i in range(3)]
+    rows = [_row("probe", p, "t1", 0, mae) | {"label_bleed_class": "STOP", "stop_false_ink": 0.1}
+            for p, mae in stop]
+    assert AG.missing_bleed(rows)["probe"] == {"suppressed": True}
+    rows += [_row("probe", f"p{i}", "t1", 0, 5.0) | {"label_bleed_class": "STOP", "stop_false_ink": 0.1}
+             for i in range(3, 6)]
+    cell = AG.missing_bleed(rows)["probe"]
+    assert cell["n_families"] == 6 and cell["tiles"] == 6

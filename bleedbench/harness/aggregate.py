@@ -11,6 +11,7 @@ from collections import defaultdict
 import numpy as np
 
 from ..config import private_dir
+from ..privacy import suppress
 from .metrics import a6, severe
 from . import stats as ST
 
@@ -178,10 +179,11 @@ def missing_bleed(rows: list[dict]) -> dict:
     the production intent; there is no GT to score fidelity)."""
     out = {}
     for m in sorted({r["method"] for r in rows}):
-        v = [r["stop_false_ink"] for r in rows if r["method"] == m and r["label_bleed_class"] == "STOP"
-             and r["orientation"] == 0 and r["stop_false_ink"] is not None]
-        if v:
-            out[m] = {"tiles": len(v), "ring_extended_frac": _r(np.mean(v))}
+        rs = [r for r in rows if r["method"] == m and r["label_bleed_class"] == "STOP"
+              and r["orientation"] == 0 and r["stop_false_ink"] is not None]
+        if rs:
+            cell = {"tiles": len(rs), "ring_extended_frac": _r(np.mean([r["stop_false_ink"] for r in rs]))}
+            out[m] = suppress(cell, len({r["family_id"] for r in rs}))
     return out
 
 

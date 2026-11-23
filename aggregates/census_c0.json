@@ -62,12 +62,12 @@
   "pages": 588,
   "quiet_share": {
    "ci95": [
-    0.1664,
-    0.4087
+    0.1496,
+    0.3925
    ],
    "n": 588,
    "n_families": 90,
-   "p": 0.2823
+   "p": 0.2687
   },
   "rotation": {
    "rot0": {
@@ -156,7 +156,7 @@
  "real_gt_non_test": {
   "depth_q90_hist": {
    "0-1": 283,
-   ">=30": 245
+   ">=full": 245
   },
   "edge_class_counts": {
    "FULL": 245,

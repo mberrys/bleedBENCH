@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import textwrap
 
 import numpy as np
 
@@ -29,8 +30,12 @@ def assert_feature_names(names: list[str]) -> None:
 
 
 def assert_gate_code(fn) -> None:
-    """Static audit: the gate's source may not mention label/id/split names."""
-    src = inspect.getsource(fn)
+    """Static audit: the gate's source may not mention label/id/split names.
+
+    `getsource` returns the lines with their original indentation, so dedent before parsing;
+    a nested function or a lambda assigned inside a block is otherwise a syntax error.
+    """
+    src = textwrap.dedent(inspect.getsource(fn))
     for node in ast.walk(ast.parse(src)):
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith(FORBIDDEN_PREFIX):
             raise ValueError(f"gate code references forbidden column {node.value!r}")

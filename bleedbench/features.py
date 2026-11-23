@@ -26,28 +26,36 @@ def _known_band(tile: np.ndarray, unknown: np.ndarray, width: int = BAND) -> np.
     return near
 
 
-def _stats(rgb: np.ndarray, region: np.ndarray) -> dict:
-    ys, xs = np.where(region)
-    if ys.size:                                   # work on the region's bounding box only
-        box = (slice(max(0, ys.min() - 1), ys.max() + 2), slice(max(0, xs.min() - 1), xs.max() + 2))
-        rgb, region = rgb[box], region[box]
+def _stats(rgb: np.ndarray, region: np.ndarray, unknown: np.ndarray | None = None) -> dict:
+    """Colour and texture over `region`, with gradient stats kept off the seam.
+
+    The unknown band is zeroed, so a Sobel window centred on a pixel next to it reads black
+    and reports a false edge on a flat tile. Excluding the 1 px seam border from the gradient
+    and Canny means keeps `feat_grad_mean` and `feat_edge_density` about the known content.
+    """
+    if not region.any():
+        return {"grad_mean": 0.0, "color_var": 0.0, "edge_density": 0.0,
+                "near_white": 0.0, "local_entropy": 0.0, "local_contrast": 0.0}
     lab = srgb_to_lab(rgb)
     L = lab[..., 0]
     gx = cv2.Sobel(L, cv2.CV_64F, 1, 0, ksize=3)
     gy = cv2.Sobel(L, cv2.CV_64F, 0, 1, ksize=3)
     grad = np.hypot(gx, gy) / 8.0
     edges = cv2.Canny(np.clip(L * 2.55, 0, 255).astype(np.uint8), 40, 120) > 0
+    core = region & ~dilate(unknown, 1) if unknown is not None else region
+    if not core.any():
+        core = region
     px = rgb[region].astype(np.float64)
     hist = np.histogram(L[region], bins=32, range=(0, 100))[0].astype(np.float64)
     p = hist / max(1.0, hist.sum())
     ent = float(-(p[p > 0] * np.log2(p[p > 0])).sum())
     return {
-        "grad_mean": float(grad[region].mean()) if region.any() else 0.0,
-        "color_var": float(px.std(0).max()) if len(px) else 0.0,
-        "edge_density": float(edges[region].mean()) if region.any() else 0.0,
-        "near_white": float((L[region] > 95).mean()) if region.any() else 0.0,
+        "grad_mean": float(grad[core].mean()),
+        "color_var": float(px.std(0).max()),
+        "edge_density": float(edges[core].mean()),
+        "near_white": float((L[region] > 95).mean()),
         "local_entropy": ent,
-        "local_contrast": float(np.percentile(L[region], 95) - np.percentile(L[region], 5)) if region.any() else 0.0,
+        "local_contrast": float(np.percentile(L[region], 95) - np.percentile(L[region], 5)),
     }
 
 
@@ -64,7 +72,7 @@ def classify(st: dict, t: dict = CLASS_T) -> str:
 def tile_features(inp: np.ndarray, unknown: np.ndarray) -> dict:
     """feat_* from the input tile and mask only."""
     region = _known_band(inp, unknown)
-    st = _stats(inp, region)
+    st = _stats(inp, region, unknown)
     # mirror disagreement: known rows just inside the seam vs rows further in (input-only proxy)
     near1 = dilate(unknown, 8) & ~unknown
     near2 = dilate(unknown, 16) & ~unknown & ~near1
@@ -87,4 +95,4 @@ def tile_features(inp: np.ndarray, unknown: np.ndarray) -> dict:
 def label_content_class(gt: np.ndarray, unknown: np.ndarray, scored: np.ndarray) -> str:
     """label_*: class from GT (known band + GT ring). Label store only; never a gate input."""
     region = _known_band(gt, unknown) | scored
-    return classify(_stats(gt, region))
+    return classify(_stats(gt, region, unknown))

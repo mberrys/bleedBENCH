@@ -79,7 +79,7 @@ v2.1 is the first revision written against real data: a private print-shop corpu
 | M4 | **A6 seam rule (C1 > 2) applies to flat and gradient tiles only.** | The all-class rule failed edge repeat on most structure/texture tiles (median seam step 8.7 / 11.3), violating §4.1's own requirement that the reference passes the absolute rules. | DD86 |
 | M5 | **Tier C0 pilot, pseudo-GT track P, train partitions.** | Real GT exists on 165 pages / 34 families only; no-bleed pages supply training data via inward crops (V13) but never headline numbers. | DD67–DD70 |
 | M6 | **Families from evidence, not filenames.** Union-find over folder, filename key, tracker client, text shingles, shared embedded images and render hashes, with hub suppression. | A naive folder rule merged 412 of 455 files (a preview portfolio and date-named batch folders mix clients); generic product words ("dinner", "wine") chained unrelated clients. | DD72 |
-| M7 | **Measured priors replace assumptions where precise enough.** | Quiet pages 27.9% (95% CI 16–40%) vs 50% assumed; P(FULL \| image edge) 26% (CI 9–73%) vs `ASM-A1` 50%; no real edge in the 2–29 px depth gap. | DD77 |
+| M7 | **Measured priors replace assumptions where precise enough.** | Quiet pages 26.9% (95% CI 15–39%) vs 50% assumed; P(FULL \| image edge) 26% (CI 9–73%) vs `ASM-A1` 50%; no real edge in the 2–29 px depth gap. | DD77 |
 | M8 | **Gate units are orientation-0 tiles; measured design effects replace planning values.** | Measured `DE_tile` = 12.9 (ICC 0.46, 27 tiles/page) vs 2.35 planned; four rotations of a tile are not independent. Tile-level Gate A needs ≈3,860 accepted tiles at this DE. | DD74 |
 | M9 | **Corpus-trained submissions** declare a training manifest audited against eval families and near-duplicates; real-GT families never train; gates are fitted on a partition disjoint from inpainter training. | Prevents the three leakage paths a real corpus opens: near-duplicate versions, stacking, and generator priors fitted on test families. | DD69–DD71, DD75, DD76 |
 | M10 | **Weights are loaded without unpickling.** Legacy checkpoints are converted once with a restricted unpickler to safetensors and pinned by SHA-256. | The big-LaMa checkpoint is a Lightning pickle; `weights_only=True` cannot load it. | DD85 |
@@ -434,8 +434,8 @@ These rules decide whether an edge's GT is trustworthy and what class it is. The
 |---|---|---|---|
 | `NO_INK` | no ink in the first 2 px inside the trim on ≥98% of positions | trim edge is paper | often dropped as blank ring |
 | `STOP` | `D_e ≤ 1` and ink at trim | artwork stops at trim; correct answer is paper | **dropped** by v1 |
-| `FULL` | `D_e ≥ 30` | real hidden bleed exists | “valid” |
-| `AMBIGUOUS` | `2 ≤ D_e < 30` | held out of primary analysis; synthetic only for F | none (gap) |
+| `FULL` | `D_e ≥ full_min`, where `full_min = max(2, round(0.8·s))` and `s` is the scored ring width (V12) | real hidden bleed exists | “valid” |
+| `AMBIGUOUS` | `2 ≤ D_e < full_min` | held out of primary analysis; synthetic only for F | none (gap) |
 
 **V5 — Edge valid if GT trustworthy.** An edge is included unless: the GT ring contains crop/registration marks or vector marks that are not page artwork; the source has missing/incorrect ICC; the render is corrupted; or >2% of positions have contradictory evidence (ink at trim but alternating paper/ink in the ring at a spatial frequency inconsistent with artwork). Reasons are recorded; the default is include, classify and score.
 
@@ -1556,7 +1556,7 @@ Every design decision, with its one-line reason. Metric IDs are in §4; `DD` num
 | DD13 | Publish `roundtrip_gt` floor | Without it, a CMYK dE cannot be attributed to the model. |
 | DD14 | Classify STOP/NO_INK instead of dropping | The ~35% of v1 pages where paper is correct (43/124: 10 blank + 33 short) are the restraint test, not invalid data. |
 | DD15 | Ink test uses ΔE00 relative to paper | v1's 200/245 thresholds miss pale tints and coloured paper. |
-| DD16 | Depth p90, classes at ≤1 / 2–29 / ≥30 | Matches the measured bimodality and holds out the empty middle class. |
+| DD16 | Depth p90, classes at ≤1 / 2–`full_min` / ≥`full_min`, with `full_min = max(2, round(0.8·s))` | Matches the measured bimodality and holds out the empty middle class; the threshold tracks DPI through the scored ring (V12) instead of a fixed 30 px that 150 DPI pages can never reach. |
 | DD17 | No drop for “art stops short of full bleed” | That is the production case the benchmark exists to score. |
 | DD18 | Family-level 50/25/25 splits | Page/tile splits leak content and overstate significance. |
 | DD19 | Public synthetic train split | Public baselines need training data that is disjoint from evaluation. |

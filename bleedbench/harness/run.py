@@ -1,8 +1,8 @@
 """Tile runner: cut tiles for a set of pages, run methods in all four orientations, score.
 
 Inference sees only the input canvas (InputStore). GT is loaded afterwards for scoring, in the
-same process for classical methods; learned methods run in a subprocess with
-BLEEDBENCH_INFERENCE=1 (see harness/learned.py) so they cannot open the LabelStore.
+same process for every method; each call is wrapped in learned.sealed(), which sets
+BLEEDBENCH_INFERENCE=1 so a learned method cannot open the LabelStore (see harness/learned.py).
 Rows go to _private/runs/<run_id>/tiles.csv.
 """
 from __future__ import annotations
@@ -15,10 +15,11 @@ from typing import Callable
 import numpy as np
 
 from .. import features as FT
-from ..config import private_dir
+from ..config import bleed_px, private_dir
 from ..geometry import Geometry, canvas_masks, cut_tile, place_tiles, rot, unrot
 from ..store import InputStore, LabelStore
 from . import metrics as M
+from .learned import sealed
 
 ORIENTS = (0, 90, 180, 270)
 Method = Callable[[np.ndarray, np.ndarray], np.ndarray]
@@ -31,8 +32,8 @@ def page_tiles(page_key: str, ins: InputStore, lab: LabelStore, tile: int = 512)
     L = lab.labels(page_key)
     W, H, B = meta["W"], meta["H"], meta["B"]
     edges = {e["edge"]: e for e in L["edges"]}
-    a = _apron_for_band(B)
-    g = Geometry(dpi=meta["dpi"], b=B - a, a=a, tile=tile)
+    b, a = _band(meta)
+    g = Geometry(dpi=meta["dpi"], b=b, a=a, tile=tile)
     # V12 is per edge: each edge (and each arm of a corner) is scored at its own width, so one
     # edge without bleed (e.g. a spine) does not unscore the rest of the page.
     unk_c, sc_c = canvas_masks(W, H, g, sides=L["scored_px"])
@@ -49,9 +50,18 @@ def page_tiles(page_key: str, ins: InputStore, lab: LabelStore, tile: int = 512)
                cut_tile(sc_c, W, H, g, t), ecls, "+".join(sorted(set(bad))))
 
 
-def _apron_for_band(B: int) -> int:
-    """Recover a from B for the supported DPIs (B=32 @150, 48 @300, 80 @600)."""
-    return {32: 13, 48: 10, 80: 5, 64: 4}[B]
+def _band(meta: dict) -> tuple[int, int]:
+    """(b, a) for a page, from the stored values or derived from B and the DPI.
+
+    Older input stores predate the stored b/a and only have B and dpi, so derive them: B is
+    band_px(b), hence b = bleed_px(dpi) and a = B - b. No DPI table to rot.
+    """
+    B = meta["B"]
+    b = meta.get("b")
+    if b is None:
+        b = bleed_px(meta["dpi"])
+    a = meta.get("a")
+    return b, (B - b if a is None else a)
 
 
 def _complete_rows(path: Path):
@@ -111,7 +121,8 @@ def run(run_id: str, page_keys: list[str], methods: dict[str, Method], split_of:
                     for name, fn in methods.items():
                         if hasattr(fn, "batch"):
                             t0 = time.perf_counter()
-                            outs = fn.batch([rot(inp, r) for r in orients], [rot(unk, r) for r in orients])
+                            with sealed():
+                                outs = fn.batch([rot(inp, r) for r in orients], [rot(unk, r) for r in orients])
                             ms = (time.perf_counter() - t0) * 1000 / len(orients)
                             batched[name] = (outs, list(fn.last_raws), ms)
                     for oi, r in enumerate(orients):
@@ -124,7 +135,8 @@ def run(run_id: str, page_keys: list[str], methods: dict[str, Method], split_of:
                                              "label_content_class": feats_cls, **feats, **m})
                                 continue
                             t0 = time.perf_counter()
-                            raw = fn(ri, ru)
+                            with sealed():
+                                raw = fn(ri, ru)
                             ms = (time.perf_counter() - t0) * 1000
                             nr = getattr(fn, "last_raw", None)
                             m = M.score(unrot(raw, r), inp, unk, ctx,
@@ -173,12 +185,39 @@ def run_parallel(run_id: str, page_keys: list[str], method_names: list[str], spl
     with get_context("spawn").Pool(len(jobs)) as pool:
         parts = pool.map(_worker, jobs)
     out = private_dir("runs", run_id) / "tiles.csv"
+    _merge_parts(parts, out)
+    return out
+
+
+def _merge_parts(parts: list[str], out: Path) -> None:
+    """Merge part CSVs, keeping one block per page.
+
+    Resume with a different worker count or page list can leave the same page in two part
+    files; writing blocks in order and skipping an already-seen page_id prevents duplicate
+    rows in the merged run.
+    """
+    pid_col = _FIELDS.index("page_id")
+    seen: set[str] = set()
     with open(out, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
         header_done = False
         for p in parts:
-            lines = Path(p).read_text(encoding="utf-8").splitlines(keepends=True)
-            if not lines:
+            rows = list(csv.reader(Path(p).read_text(encoding="utf-8").splitlines()))
+            if not rows:
                 continue
-            f.writelines(lines if not header_done else lines[1:])
-            header_done = True
-    return out
+            if not header_done:
+                writer.writerow(rows[0])
+                header_done = True
+            current, block = None, []
+            for row in rows[1:]:
+                pid = row[pid_col]
+                if pid != current:
+                    if current is not None and current not in seen:
+                        seen.add(current)
+                        writer.writerows(block)
+                    current, block = pid, [row]
+                else:
+                    block.append(row)
+            if current is not None and current not in seen:
+                seen.add(current)
+                writer.writerows(block)
